@@ -25,14 +25,25 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Password is required'],
     minlength: [6, 'Password must be at least 6 characters']
   },
-//   createdAt: {
-//     type: Date,
-//     default: Date.now
-//   },
-//   isActive: {
-//     type: Boolean,
-//     default: true
-//   }
+  pin: {
+    type: String,
+    required: [true, 'Authentication PIN is required'],
+    validate: {
+      validator: function(v) {
+        return /^\d{4}$/.test(v);
+      },
+      message: props => `${props.value} is not a valid PIN. PIN must be exactly 4 digits.`
+    }
+  },
+  birthday: {
+    type: Date,
+    required: [true, 'Birthday is required']
+  },
+  sexualOrientation: {
+    type: String,
+    enum: ['male', 'female', 'other', 'prefer not to say'],
+    required: [true, 'Sexual orientation is required']
+  }
 }, {
   timestamps: true
 });
@@ -50,9 +61,27 @@ userSchema.pre('save', async function(next) {
   }
 });
 
+// Pre-save hook to hash PIN
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('pin')) return next();
+  
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.pin = await bcrypt.hash(this.pin, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Method to compare passwords
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
+};
+
+// Method to compare PINs
+userSchema.methods.comparePin = async function(candidatePin) {
+  return await bcrypt.compare(candidatePin, this.pin);
 };
 
 const User = mongoose.model('User', userSchema);
