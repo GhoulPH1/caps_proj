@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import userRoutes from './routes/user.route.js';
+import uploadRoutes from './routes/upload.route.js';
 
 dotenv.config();
 
@@ -14,6 +15,8 @@ app.use(express.json());
 app.get('/', (req, res) => {
   res.send('Server is running!');
 });
+
+app.use('/api', uploadRoutes);
 
 app.use("/api/user", userRoutes);
 
