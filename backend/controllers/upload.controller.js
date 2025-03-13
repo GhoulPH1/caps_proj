@@ -4,6 +4,7 @@ import { FleekSdk, PersonalAccessTokenService } from '@fleek-platform/sdk/node';
 import multer from 'multer';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
+import { ReadableStream } from 'stream/web';
 
 const unlinkAsync = promisify(fs.unlink);
 
@@ -68,21 +69,35 @@ export const uploadFile = async (req, res) => {
         throw new Error(`File not found at path: ${filePath}`);
       }
       
-      // Read file as buffer
-      const fileBuffer = fs.readFileSync(filePath);
-      
       // Initialize Fleek SDK
       const fleekSdk = initFleekSdk();
       
       console.log(`Starting IPFS upload for file: ${req.file.originalname}`);
       
-      // Use the ipfs().add method as shown in the example
-      const result = await fleekSdk.ipfs().add({
-        path: req.file.originalname,
-        content: fileBuffer,
+      // Prepare the file content as a buffer
+      const fileContent = fs.readFileSync(filePath);
+      
+      // Method 1: Using storage().uploadFile with Blob
+      const result = await fleekSdk.storage().uploadFile({
+        file: {
+          name: req.file.originalname,
+          stream: () => {
+            // Create a readable stream from the buffer
+            const readableStream = new ReadableStream({
+              start(controller) {
+                controller.enqueue(Buffer.from(fileContent));
+                controller.close();
+              }
+            });
+            return readableStream;
+          }
+        },
+        onUploadProgress: ({ loadedSize, totalSize }) => {
+          console.log(`Upload progress: ${loadedSize}/${totalSize} bytes (${Math.round(loadedSize/totalSize*100)}%)`);
+        }
       });
       
-      console.log(`Upload completed with CID: ${result.cid}`);
+      console.log(`Upload completed with CID: ${result.pin.cid}`);
 
       // Clean up the temp file
       await unlinkAsync(filePath);
@@ -90,8 +105,8 @@ export const uploadFile = async (req, res) => {
       return res.status(200).json({
         success: true,
         message: 'File uploaded to IPFS successfully',
-        cid: result.cid,
-        ipfsUrl: `https://ipfs.io/ipfs/${result.cid}`,
+        cid: result.pin.cid,
+        ipfsUrl: `https://ipfs.io/ipfs/${result.pin.cid}`,
         fileName: req.file.originalname,
         fileSize: req.file.size
       });
