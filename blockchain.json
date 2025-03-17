@@ -1,0 +1,79 @@
+[
+  {
+    "index": 0,
+    "timestamp": "01/01/2020",
+    "transactions": [
+      "Genesis Block"
+    ],
+    "previousHash": "0",
+    "merkleRoot": "89eb0ac031a63d2421cd05a2fbe41f3ea35f5c3712ca839cbf6b85c4ee07b7a3",
+    "hash": "c625e114d245f6a2db697a015701ab047841a11f8057522b44dcf9127d688ab1",
+    "nonce": 0
+  },
+  {
+    "index": 1,
+    "timestamp": "2025-03-16T23:59:11.986Z",
+    "transactions": [
+      "bb64c61e96753a6d47a082c31a1e552c06f520976aaddcf3c97d1c09d6a0b8a0"
+    ],
+    "previousHash": "c625e114d245f6a2db697a015701ab047841a11f8057522b44dcf9127d688ab1",
+    "merkleRoot": "01de67c1a7fa5f9c2a06186a4ecc1048a00e8483bdd570c844940c4e49def5fb",
+    "hash": "009bce9b2f962bc7590351e282f50aa75d91abf892a94ca354dc5c90987d17c2",
+    "nonce": 85
+  },
+  {
+    "index": 2,
+    "timestamp": "2025-03-17T00:01:14.155Z",
+    "transactions": [
+      "d465b7bfedd784d39af63b32e7428ceb9471cfd7de974af9f935bd90e11ee819"
+    ],
+    "previousHash": "009bce9b2f962bc7590351e282f50aa75d91abf892a94ca354dc5c90987d17c2",
+    "merkleRoot": "908cd2ce008da3daa43b2dc6a104092dda3b2a304e80d3e25e91a114e63cf7d6",
+    "hash": "0053d5b3d8d0042e685d31d5c8106fd4b3ab4d903297a59c03c6590b54bf721d",
+    "nonce": 131
+  },
+  {
+    "index": 3,
+    "timestamp": "2025-03-17T00:08:38.674Z",
+    "transactions": [
+      "e11ac2009774010f17db44bbba35d36a038c25975baec4de6446e14bfc1622c6"
+    ],
+    "previousHash": "0053d5b3d8d0042e685d31d5c8106fd4b3ab4d903297a59c03c6590b54bf721d",
+    "merkleRoot": "9a89381d2c95ce26a7a0be8a5317e56711854eff754e1c42157a3e3d8ea22f8d",
+    "hash": "0081da51408cc4390873a3e0fcd474530edb1940bd2ecfb573940308a321bc41",
+    "nonce": 245
+  },
+  {
+    "index": 4,
+    "timestamp": "2025-03-17T00:12:13.882Z",
+    "transactions": [
+      "1b4042177cb669a78713ec71e3f5e6f7f5d0d5193f9399862d68c1ae07151dfa"
+    ],
+    "previousHash": "0081da51408cc4390873a3e0fcd474530edb1940bd2ecfb573940308a321bc41",
+    "merkleRoot": "46442187828dd7d4ff569e5b7d722a46adcf24d35a740e9e57e54569c04bf581",
+    "hash": "0023001294e5cb150a7583bca6411639ed2d17ccb005c3011aa5e286797646cc",
+    "nonce": 188
+  },
+  {
+    "index": 5,
+    "timestamp": "2025-03-17T00:17:06.802Z",
+    "transactions": [
+      "2839ab6d457c32064470e9a6d15685b67523ef13d5cd45d1c504bf7b420efac7"
+    ],
+    "previousHash": "0023001294e5cb150a7583bca6411639ed2d17ccb005c3011aa5e286797646cc",
+    "merkleRoot": "f174a7f71d446028c9fa0d05e97e434770d8e187d4431e06226d2da11bac53b5",
+    "hash": "0086e82705339cc0438b1a883632e54390e7bad444e5c3e9909c812623701c1d",
+    "nonce": 870
+  },
+  {
+    "index": 6,
+    "timestamp": "2025-03-17T00:31:58.362Z",
+    "transactions": [
+      "f1688d276637885f8d55a44baf9ee18e5cd007a18bf9ea6fa1a2f23f738f28b2"
+    ],
+    "previousHash": "0086e82705339cc0438b1a883632e54390e7bad444e5c3e9909c812623701c1d",
+    "merkleRoot": "f384dea0eff5512fa477cd1863ef67f35f0d7bc2a7706c4b6ccc4ecc0f66a12d",
+    "hash": "00631e994bcd77a13ef6774a887084d043cd88b9b46093deaf10e19440a9bcfd",
+    "nonce": 716
+  }
+]

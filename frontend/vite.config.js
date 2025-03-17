@@ -11,6 +11,7 @@ export default defineConfig({
         target,
         changeOrigin: true,
         secure: false,
+        timeout: 30000,
       }  // proxy all requests starting with /api to the backend server
     }
   }
