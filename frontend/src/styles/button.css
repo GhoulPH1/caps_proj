@@ -1,0 +1,77 @@
+/* buttons.css */
+
+/* Base Button Component */
+.btn {
+    @apply font-poppins font-extrabold relative overflow-hidden cursor-pointer 
+           py-3 px-6 rounded inline-flex items-center justify-center gap-2 
+           transition-all duration-300 ease-[cubic-bezier(0.3,0,0.2,1)];
+  }
+  
+  /* Button Variants */
+  .btn-transparent {
+    @apply bg-transparent text-gray-800 border border-black/10;
+  }
+  
+  .btn-colored {
+    @apply bg-blue-500 text-white;
+  }
+  
+  /* Button States and Effects */
+  .btn-transparent::before,
+  .btn-colored:hover::before {
+    content: "";
+    @apply absolute inset-0 w-full h-full bg-white/20 pointer-events-none transition-opacity duration-300;
+  }
+  
+  .btn-transparent::before {
+    @apply opacity-0;
+  }
+  
+  .btn-transparent:hover::before,
+  .btn-colored:hover::before {
+    @apply opacity-100;
+  }
+  
+  .btn::after {
+    content: "";
+    @apply absolute h-full w-0 top-0 -left-[10%] transition-all duration-300 pointer-events-none;
+    background: linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.8),
+      rgba(255, 255, 255, 0.2) 25%,
+      transparent 100%
+    );
+    transform: skewX(-15deg);
+  }
+  
+  .btn:hover::after {
+    @apply w-[120%] -left-[10%];
+  }
+  
+  /* Hover states */
+  .btn-transparent:hover {
+    @apply text-gray-600;
+  }
+  
+  .btn-colored:hover {
+    @apply bg-transparent text-gray-800;
+  }
+  
+  /* Button Animations */
+  .btn.slide-right-enter {
+    clip-path: inset(0 100% 0 0);
+    animation: slideRightIn 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  .btn.slide-right-exit {
+    animation: slideRightOut 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  .btn.slide-left-enter {
+    clip-path: inset(0 0 0 100%);
+    animation: slideLeftIn 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  .btn.slide-left-exit {
+    animation: slideLeftOut 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }

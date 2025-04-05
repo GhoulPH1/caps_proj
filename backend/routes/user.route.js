@@ -1,8 +1,17 @@
 import express from 'express';
-import { removeUser, userRegister, updateCredentials, fetchUsers, validateCredentials, validatePin, loginUser } from '../controllers/user.controller.js';
+import { validateToken } from '../middleware/auth.middleware.js';
+import { 
+  getUserSession, 
+  removeUser, 
+  userRegister, 
+  updateCredentials, 
+  fetchUsers, 
+  validateCredentials, 
+  validatePin, 
+  loginUser 
+} from '../controllers/user.controller.js';
 
-
-const router =  express.Router(); 
+const router = express.Router(); 
 
 router.post('/', userRegister); 
 
@@ -19,4 +28,6 @@ router.post('/validate-pin', validatePin);
 
 router.post('/login', loginUser);
 
-export default router; 
+router.get('/session', validateToken, getUserSession);
+
+export default router;

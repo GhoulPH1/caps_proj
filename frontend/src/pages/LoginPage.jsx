@@ -1,51 +1,57 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useUserStore } from '../store/user.js';
 import { useNavigate } from 'react-router-dom';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { loginUser, isLoading, error, setError } = useUserStore();
+  const { loginUser, validateCredentials, validatePin, isLoading, error } = useUserStore();
   
   // State for form fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [pin, setPin] = useState('');
+  const [pin, setPin] = useState(['', '', '', '']);
   
-  // State to track which step of the login process we're on
+  // Password visibility state
+  const [showPassword, setShowPassword] = useState(false);
+  
+  // Refs for PIN input focus management
+  const pinInputRefs = useRef(Array(4).fill(null).map(() => React.createRef()));
+  
+  // State to track login steps and temporary user data
   const [step, setStep] = useState(1);
-  
-  // State to store temporary user data between steps
   const [tempUserData, setTempUserData] = useState(null);
+  
+  // Animation states for buttons
+  const [credentialsButtonAnimation, setCredentialsButtonAnimation] = useState('');
+  const [pinButtonAnimation, setPinButtonAnimation] = useState('');
   
   // Handle email/password submission (first step)
   const handleCredentialsSubmit = async (e) => {
     e.preventDefault();
     
-    if (!email || !password) {
-      setError('Email and password are required');
-      return;
-    }
+    // Add entrance animation
+    setCredentialsButtonAnimation('slide-right-enter');
     
     try {
-      // Make a custom API call to validate email/password without completing login
-      const res = await fetch("/api/user/validate-credentials", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.msg || 'Invalid email or password');
-      }
+      // Use store's validation function
+      const result = await validateCredentials(email, password);
       
       // Store temporary user data and move to PIN step
-      setTempUserData(data.user);
-      setStep(2);
-      setError(null);
+      setTempUserData(result.user);
+      
+      // Add exit animation and transition to next step
+      setCredentialsButtonAnimation('slide-right-exit');
+      setTimeout(() => {
+        setStep(2);
+        setPin(['', '', '', '']); // Reset PIN
+        
+        // Focus on first PIN input
+        setTimeout(() => pinInputRefs.current[0]?.current?.focus(), 100);
+      }, 500); // Match animation duration
+      
     } catch (error) {
-      setError(error.message || 'Authentication failed');
+      // Error is already handled by the store
+      setCredentialsButtonAnimation(''); // Reset animation on error
     }
   };
   
@@ -53,160 +59,245 @@ const LoginPage = () => {
   const handlePinSubmit = async (e) => {
     e.preventDefault();
     
-    if (!pin || !/^\d{4}$/.test(pin)) {
-      setError('PIN must be exactly 4 digits');
-      return;
-    }
+    const pinValue = pin.join('');
+    
+    // Add entrance animation
+    setPinButtonAnimation('slide-left-enter');
     
     try {
-      // Complete the login process with PIN
-      const res = await fetch("/api/user/validate-pin", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          userId: tempUserData._id,
-          pin 
-        })
-      });
+      // Validate PIN via store
+      await validatePin(tempUserData._id, pinValue);
       
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.msg || 'Invalid PIN');
-      }
-      
-      // Handle successful login
-      await loginUser({
+      // Complete login
+      const loginResult = await loginUser({
         email,
         password,
-        pin
+        pin: pinValue
       });
       
-      // Redirect to homepage
-      navigate('/');
+      // Add exit animation before navigation
+      setPinButtonAnimation('slide-left-exit');
+      
+      // Check if login was successful
+      if (loginResult && loginResult.success) {
+        setTimeout(() => navigate('/'), 500); // Match animation duration
+      }
     } catch (error) {
-      setError(error.message || 'PIN verification failed');
+      // Error is already handled by the store
+      setPinButtonAnimation(''); // Reset animation on error
     }
   };
   
-  // Go back to credentials step
-  const handleBack = () => {
-    setStep(1);
-    setPin('');
-    setError(null);
+  // Render different login steps
+  const renderLoginStep = () => {
+    switch(step) {
+      case 1:
+        return renderCredentialsStep();
+      case 2:
+        return renderPinStep();
+      default:
+        return renderCredentialsStep();
+    }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
+  // Render credentials step (email and password)
+  const renderCredentialsStep = () => (
+    <div className="flex flex-col items-start justify-center space-y-8">
+      <div className="space-y-2">
+        <h2 className="text-5xl font-bold">WELCOME TO</h2>
+        <h1 className="text-7xl font-bold">SynoCore</h1>
+        <p className="text-lg text-gray-300">Please sign in with your existing account</p>
+      </div>
+
+      <form onSubmit={handleCredentialsSubmit} className="w-full max-w-md space-y-6">
+        <div className="space-y-1">
+          <label className="block uppercase text-sm font-medium text-gray-400">EMAIL</label>
+          <input 
+            type="email" 
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full bg-gray-700 bg-opacity-50 text-white p-3 rounded border border-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-500"
+            required 
+            autoComplete="email"
+          />
+        </div>
         
-        {/* Display any errors */}
-        {error && (
-          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
-            {error}
-          </div>
-        )}
-        
-        {/* Step 1: Email and Password */}
-        {step === 1 && (
-          <form onSubmit={handleCredentialsSubmit}>
-            <div className="mb-4">
-              <label htmlFor="email" className="block text-gray-700 mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="your@email.com"
-                required
-              />
-            </div>
-            
-            <div className="mb-6">
-              <label htmlFor="password" className="block text-gray-700 mb-2">
-                Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-            
+        <div className="space-y-1">
+          <label className="block uppercase text-sm font-medium text-gray-400">PASSWORD</label>
+          <div className="relative">
+            <input 
+              type={showPassword ? "text" : "password"} 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-gray-700 bg-opacity-50 text-white p-3 rounded border border-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-500 pr-10"
+              required 
+              autoComplete="current-password"
+            />
             <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-blue-600 text-white p-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+              aria-label={showPassword ? "Hide password" : "Show password"}
             >
-              {isLoading ? 'Checking...' : 'Next'}
+              <span className="material-icons">
+                {showPassword ? 'visibility_off' : 'visibility'}
+              </span>
             </button>
-          </form>
-        )}
-        
-        {/* Step 2: PIN */}
-        {step === 2 && (
-          <form onSubmit={handlePinSubmit}>
-            <div className="mb-6">
-              <label htmlFor="pin" className="block text-gray-700 mb-2">
-                Enter your 4-digit PIN
-              </label>
-              <input
-                type="password"
-                id="pin"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-xl tracking-widest"
-                placeholder="••••"
-                maxLength={4}
-                inputMode="numeric"
-                pattern="\d{4}"
-                required
-              />
-              <p className="text-sm text-gray-500 mt-2">
-                Enter the 4-digit PIN you created during registration
-              </p>
-            </div>
-            
-            <div className="flex space-x-4">
-              <button
-                type="button"
-                onClick={handleBack}
-                className="w-1/3 bg-gray-200 text-gray-800 p-3 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
-              >
-                Back
-              </button>
-              
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-2/3 bg-blue-600 text-white p-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-              >
-                {isLoading ? 'Verifying...' : 'Login'}
-              </button>
-            </div>
-          </form>
-        )}
-        
-        {/* Registration link */}
-        <div className="mt-6 text-center">
-          <p className="text-gray-600">
-            Don't have an account?{' '}
-            {/* <a href="/register" className="text-blue-600 hover:underline">
-              Register here
-            </a> */}
-            <a className="text-blue-600 hover:underline cursor:pointer" onClick={() => navigate("/register")}>
-              Register here
-            </a>
+          </div>
+          <p className="text-right text-sm text-gray-400 hover:text-white cursor-pointer">
+            Forgot Password? Reset
           </p>
         </div>
+        
+        <button 
+          type="submit" 
+          disabled={isLoading} 
+          className={`btn btn-colored w-full uppercase ${credentialsButtonAnimation}`}
+        >
+          {isLoading ? 'CHECKING...' : 'LOGIN'}
+        </button>
+      </form>
+    </div>
+  );
+
+  // Render PIN entry step
+  const renderPinStep = () => (
+    <div className="flex flex-col items-center justify-center space-y-4 w-full">
+      <div className="text-center space-y-2">
+        <h2 className="text-lg text-gray-300">PLEASE</h2>
+        <h1 className="text-4xl font-bold">ENTER <span className="font-extrabold">YOUR AUTHENTICATION PIN</span></h1>
+        <p className="text-lg text-gray-300">Provide a 4-numerical character pin</p>
+      </div>
+      
+      <form onSubmit={handlePinSubmit} className="w-full space-y-8">
+        <div className="flex justify-center space-x-4 mt-6">
+          {pin.map((digit, index) => (
+            <input 
+              key={index} 
+              ref={pinInputRefs.current[index]} 
+              type="password" 
+              maxLength={1} 
+              value={digit}
+              onChange={(e) => {
+                const sanitizedValue = e.target.value.replace(/\D/g, '').slice(0, 1);
+                const newPin = [...pin];
+                newPin[index] = sanitizedValue;
+                setPin(newPin);
+                
+                // Automatically move to next input
+                if (sanitizedValue && index < 3) {
+                  pinInputRefs.current[index + 1]?.current?.focus();
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Backspace' && !pin[index] && index > 0) {
+                  pinInputRefs.current[index - 1]?.current?.focus();
+                }
+              }}
+              className="w-16 h-16 bg-gray-700 bg-opacity-50 border border-gray-600 text-center text-2xl rounded focus:outline-none focus:ring-1 focus:ring-gray-500" 
+              inputMode="numeric"
+              pattern="\d*"
+            />
+          ))}
+        </div>
+        
+        {error && <div className="text-center text-red-500">Error Message Here</div>}
+        
+        <div className="flex justify-end mt-6">
+          <button 
+            type="submit" 
+            disabled={isLoading || pin.includes('')} 
+            className={`btn btn-transparent px-12 ${pinButtonAnimation}`}
+          >
+            {isLoading ? 'VERIFYING...' : 'Proceed'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+
+  // Render error message
+  const renderErrorMessage = () => {
+    if (!error) return null;
+    
+    return (
+      <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-600 text-white p-3 rounded shadow-lg z-50 max-w-md text-center slide-down-enter">
+        {error}
+      </div>
+    );
+  };
+
+  // Navigation button with animation
+  const NavButton = ({ to, children }) => (
+    <a 
+      href={to} 
+      className="nav-link uppercase text-sm"
+    >
+      {children}
+    </a>
+  );
+
+  return (
+    <div className="min-h-screen bg-black text-white flex flex-col relative font-sans">
+      {/* Error Message */}
+      {renderErrorMessage()}
+
+      {/* Navigation */}
+      <nav className="flex justify-between items-center p-6">
+        <div className="flex space-x-8">
+          <NavButton to="/">HOME</NavButton>
+          {step === 1 ? (
+            <NavButton to="/register">REGISTER</NavButton>
+          ) : (
+            <>
+              <NavButton to="/">HOME</NavButton>
+              <NavButton to="/register">REGISTER</NavButton>
+              <NavButton to="/about">ABOUT</NavButton>
+            </>
+          )}
+        </div>
+        {step === 2 && (
+          <button 
+            onClick={() => setStep(1)} 
+            className="nav-link uppercase text-sm"
+          >
+            BACK
+          </button>
+        )}
+      </nav>
+
+      {/* Main Content - Flex layout for two-column design on PIN step */}
+      <div className="flex-grow flex items-center">
+        {step === 1 ? (
+          <div className="w-full max-w-lg px-12 mx-auto">
+            {renderCredentialsStep()}
+          </div>
+        ) : (
+          <div className="w-full flex">
+            {/* Left section (blurred form) */}
+            <div className="w-1/3 px-6 flex items-center justify-center opacity-30 blur-sm">
+              <div className="space-y-6">
+                <h2 className="text-4xl font-bold">SynoCore</h2>
+                <p className="text-gray-400">Please sign in with your existing account</p>
+                <div className="space-y-4">
+                  <div className="h-12 bg-gray-800 rounded"></div>
+                  <div className="h-12 bg-gray-800 rounded"></div>
+                  <button className="w-full h-12 bg-gray-800 rounded"></button>
+                </div>
+              </div>
+            </div>
+            
+            {/* Right section (PIN entry) */}
+            <div className="w-2/3 px-6 flex items-center justify-center">
+              {renderPinStep()}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Logo */}
+      <div className="absolute bottom-6 right-6 cursor-pointer" onClick={() => navigate('/')}>
+        <img src="/src/assets/synocore-logo.png" alt="SynoCore Logo" className="h-12 w-auto" />
       </div>
     </div>
   );

@@ -1,27 +1,44 @@
-import { Route, Routes } from 'react-router-dom'
-import LoginPage from './pages/LoginPage'
-import RegisterPage from './pages/RegisterPage'
-import HomePage from './pages/HomePage'
-import Dashboard from './pages/Dashboard'
-import FileVerifyer from './components/FileCheck'
+import React, { lazy, Suspense } from 'react';
+import { Route, Routes, Navigate, Outlet } from 'react-router-dom';
+import { useUserStore } from './store/user.js';
+// import LoadingScreen from './components/LoadingScreen.jsx';
 
+// Lazy load components
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const HomePage = lazy(() => import('./pages/HomePage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const FileVerifyer = lazy(() => import('./components/FileCheck'));
+const FileUpload = lazy(() => import('./components/FileUpload'));
+const LoadingScreen  = lazy(() => import('./components/LoadingScreen')); // Create a loading component
 
-import FileUpload from './components/FileUpload'
+// PrivateRoute Component
+const PrivateRoute = () => {
+  const { currentUser } = useUserStore();
+
+  // Redirect to login if no current user
+  return currentUser ? <Outlet /> : <Navigate to="/login" replace />;
+};
 
 function App() {
- 
   return (
-    <>
-    <Routes>  
-      <Route path='/verify-file' element = { <FileVerifyer/> } />
-      <Route path='/upload' element = { <FileUpload/> } />
-      <Route path="/login" element = { <LoginPage/> } />
-      <Route path="/register" element = { <RegisterPage/> } />
-      <Route path="/" element = { <HomePage/> } />
-      <Route path="/dashboard" element = { <Dashboard/> } />
-    </Routes>  
-    </>
-  )
+    <Suspense fallback={<LoadingScreen />}>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/load" element={<LoadingScreen />} />
+
+        {/* Protected Routes */}
+        <Route element={<PrivateRoute />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/upload" element={<FileUpload />} />
+          <Route path="/verify-file" element={<FileVerifyer />} />
+        </Route>
+      </Routes>
+    </Suspense>
+  );
 }
 
-export default App
+export default App;

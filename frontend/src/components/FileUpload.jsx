@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-// import './FileUpload.css';
 
 const FileUpload = () => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -43,43 +42,46 @@ const FileUpload = () => {
     setErrorDetails('');
 
     try {
-      // Create FormData for the API request
       const formData = new FormData();
       formData.append('file', selectedFile);
+
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
       
       setStatus({ type: 'info', message: 'Uploading to IPFS...' });
       
-      // Upload the file to the server with progress tracking
       const response = await axios.post('/api/upload', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}` 
         },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           setUploadProgress(percentCompleted);
         }
       });
       
-      // Set success status with IPFS details
       setStatus({
         type: 'success',
         message: `File uploaded successfully! IPFS CID: ${response.data.cid}`
       });
 
-      // Reset selected file
       setSelectedFile(null);
       
     } catch (error) {
       console.error('Upload error:', error);
       
-      // Get detailed error message from response if available
       const errorMessage = error.response?.data?.message || error.message;
       setStatus({
         type: 'error',
         message: `Upload failed: ${errorMessage}`
       });
       
-      // Store detailed error info for debugging
       setErrorDetails(
         `Error details: ${JSON.stringify(error.response?.data || 'No response data')}`
       );
@@ -94,31 +96,29 @@ const FileUpload = () => {
   };
 
   return (
-    <div className="file-upload-container">
-      <h2>Upload File to IPFS</h2>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white p-6">
+      <h2 className="text-2xl font-bold mb-4">Upload File to IPFS</h2>
       
-      <div className="file-input-container">
+      <div className="flex flex-col items-center space-y-4 bg-gray-900 p-6 rounded-lg shadow-lg w-full max-w-lg">
         <input
           type="file"
           id="file-input"
           onChange={handleFileSelect}
           disabled={isLoading}
-          className="hidden-input"
+          className="hidden"
         />
-        <label htmlFor="file-input" className="file-input-label">
-          Select File
-        </label>
+        <label htmlFor="file-input" className="bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded cursor-pointer">Select File</label>
         <button 
           onClick={handleUploadClick} 
           disabled={!selectedFile || isLoading}
-          className="upload-button"
+          className="bg-green-600 hover:bg-green-500 text-white py-2 px-4 rounded disabled:opacity-50"
         >
           Upload to IPFS
         </button>
       </div>
       
       {selectedFile && (
-        <div className="file-details">
+        <div className="mt-4 text-sm bg-gray-800 p-4 rounded-lg shadow-lg">
           <p>Selected File: <strong>{selectedFile.name}</strong></p>
           <p>Size: <strong>{formatFileSize(selectedFile.size)}</strong></p>
           <p>Type: <strong>{selectedFile.type || 'text/plain'}</strong></p>
@@ -126,45 +126,31 @@ const FileUpload = () => {
       )}
       
       {showConfirm && (
-        <div className="confirmation-dialog">
-          <div className="confirmation-content">
-            <h3>Confirm Upload</h3>
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-gray-900 p-6 rounded-lg shadow-lg">
+            <h3 className="text-lg font-bold mb-2">Confirm Upload</h3>
             <p>Are you sure you want to upload this file to IPFS?</p>
-            <p>File: <strong>{selectedFile.name}</strong></p>
+            <p className="mt-2">File: <strong>{selectedFile.name}</strong></p>
             <p>Size: <strong>{formatFileSize(selectedFile.size)}</strong></p>
-            <div className="confirmation-buttons">
-              <button onClick={handleCancelUpload} className="cancel-button">Cancel</button>
-              <button onClick={handleConfirmUpload} className="confirm-button">Upload</button>
+            <div className="mt-4 flex justify-end space-x-2">
+              <button onClick={handleCancelUpload} className="bg-red-600 hover:bg-red-500 text-white py-2 px-4 rounded">Cancel</button>
+              <button onClick={handleConfirmUpload} className="bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded">Upload</button>
             </div>
           </div>
         </div>
       )}
       
       {status.message && (
-        <div className={`status-message ${status.type}`}>
-          {status.message}
-        </div>
-      )}
-      
-      {errorDetails && (
-        <div className="error-details">
-          <details>
-            <summary>Show technical details</summary>
-            <pre>{errorDetails}</pre>
-          </details>
-        </div>
+        <div className={`mt-4 p-3 rounded ${status.type === 'success' ? 'bg-green-600' : status.type === 'error' ? 'bg-red-600' : 'bg-yellow-600'}`}>{status.message}</div>
       )}
       
       {isLoading && (
-        <div className="loading-container">
-          <div className="loading-spinner">
-            <div className="spinner"></div>
-            <p>Processing file...</p>
-          </div>
+        <div className="mt-4 flex flex-col items-center">
+          <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+          <p className="mt-2">Processing file...</p>
           {uploadProgress > 0 && (
-            <div className="progress-container">
-              <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
-              <span className="progress-text">{uploadProgress}%</span>
+            <div className="w-full max-w-xs bg-gray-800 rounded mt-2 overflow-hidden">
+              <div className="bg-blue-600 h-2" style={{ width: `${uploadProgress}%` }}></div>
             </div>
           )}
         </div>

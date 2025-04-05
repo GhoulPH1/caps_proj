@@ -1,0 +1,32 @@
+/* icons.css */
+
+/* Button Icon */
+.btn-icon {
+    @apply text-xs text-white relative overflow-hidden transition-colors duration-300;
+  }
+  
+  /* Icon Effects */
+  .btn-icon::after {
+    content: "";
+    @apply absolute h-full w-0 top-0 -left-[20%] -z-10 transition-all duration-300 pointer-events-none;
+    background: linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.8),
+      rgba(255, 255, 255, 0.2) 25%,
+      transparent 100%
+    );
+    transform: skewX(-15deg);
+  }
+  
+  .btn-icon.slide-right:hover::after {
+    @apply w-[120%] -left-[10%];
+  }
+  
+  .btn-icon.slide-left:hover::after {
+    @apply w-[120%] -right-[10%] left-auto;
+    transform: skewX(15deg);
+  }
+  
+  .btn-icon:hover {
+    @apply text-gray-600;
+  }

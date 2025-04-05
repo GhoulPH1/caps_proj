@@ -64,12 +64,15 @@ export const verifyCid = async (req, res) => {
   }
 };
 
+
 // Refactored Upload Function
 export const uploadFile = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file provided' });
   }
 
+  console.log('Received file:', req.file);
+console.log('Received body:', req.body);
   const filePath = req.file.path;
   try {
     // Read file as buffer

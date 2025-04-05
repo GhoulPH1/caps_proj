@@ -1,0 +1,41 @@
+/* navigation.css */
+
+/* Navigation Link Styles */
+.nav-link {
+    @apply text-white text-xs tracking-wide font-normal relative 
+           transition-all duration-300 ease-out overflow-hidden;
+  }
+  
+  .nav-link::after {
+    content: "";
+    @apply absolute left-1/2 -bottom-1 w-0 h-0 opacity-0 -z-10 rounded 
+           transition-all duration-300 ease-[cubic-bezier(0.3,0,0.2,1)];
+    transform: translateX(-50%);
+    background: linear-gradient(
+      to top,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(255, 255, 255, 0.5) 40%,
+      rgba(255, 255, 255, 0.1) 80%,
+      transparent 100%
+    );
+  }
+  
+  .nav-link:hover {
+    @apply text-gray-700 -translate-y-px;
+  }
+  
+  .nav-link:hover::after {
+    @apply w-[110%] h-full bottom-0 opacity-100;
+  }
+  
+  .nav-link.active {
+    @apply text-gray-800 font-medium;
+  }
+  
+  .nav-link.active::after {
+    @apply w-full h-[90%] opacity-80;
+  }
+  
+  .nav-link:focus {
+    @apply outline-none ring-2 ring-white/50 rounded;
+  }

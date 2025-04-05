@@ -15,13 +15,23 @@ const FileCheck = () => {
     const formData = new FormData();
     formData.append('file', file);
 
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
     try {
-      const res = await axios.post('/api/verify-cid', formData);
+      const res = await axios.post('/api/verify-cid', formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       setResult(res.data);
     } catch (error) {
       setResult({ error: error.response?.data?.message || 'Verification failed' });
     }
-  };
+  }
 
   return (
     <div className="p-4 border rounded-lg shadow">

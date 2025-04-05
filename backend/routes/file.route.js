@@ -1,11 +1,12 @@
 import express from 'express';
 import { upload, uploadFile } from '../controllers/file.controller.js';
-import { verifyFileIntegrity } from '../controllers/auditor.controller.js'; // Assuming this is your auditor controller
+import { verifyFileIntegrity } from '../controllers/auditor.controller.js';
+import { validateToken } from '../middleware/auth.middleware.js'; // Import validateToken
 
 const router = express.Router();
 
 // Route for file upload to IPFS
-router.post('/upload', (req, res, next) => {
+router.post('/upload', validateToken, (req, res) => {
     console.log('Upload route hit');
     try {
       upload.single('file')(req, res, function(err) {
@@ -23,7 +24,7 @@ router.post('/upload', (req, res, next) => {
 });
 
 // NEW route for verifying CID
-router.post('/verify-cid', (req, res, next) => {
+router.post('/verify-cid', validateToken, (req, res) => {
     console.log('Verify CID route hit');
     try {
       upload.single('file')(req, res, function(err) {

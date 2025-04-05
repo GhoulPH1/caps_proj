@@ -1,0 +1,80 @@
+/* animations.css */
+
+/* Animation Classes */
+.slide-right-enter {
+    clip-path: inset(0 100% 0 0);
+    animation: slideRightIn 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  .slide-left-enter {
+    clip-path: inset(0 0 0 100%);
+    animation: slideLeftIn 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  .slide-up-enter {
+    clip-path: inset(100% 0 0 0);
+    animation: slideUpIn 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  .slide-down-enter {
+    clip-path: inset(0 0 100% 0);
+    animation: slideDownIn 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  /* Exit animations */
+  .slide-right-exit {
+    animation: slideRightOut 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  .slide-left-exit {
+    animation: slideLeftOut 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  .slide-up-exit {
+    animation: slideUpOut 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  .slide-down-exit {
+    animation: slideDownOut 0.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+  }
+  
+  /* Animation Keyframes */
+  @keyframes slideRightIn {
+    0% { clip-path: inset(0 100% 0 0); }
+    100% { clip-path: inset(0 0 0 0); }
+  }
+  
+  @keyframes slideRightOut {
+    0% { clip-path: inset(0 0 0 0); }
+    100% { clip-path: inset(0 0 0 100%); }
+  }
+  
+  @keyframes slideLeftIn {
+    0% { clip-path: inset(0 0 0 100%); }
+    100% { clip-path: inset(0 0 0 0); }
+  }
+  
+  @keyframes slideLeftOut {
+    0% { clip-path: inset(0 0 0 0); }
+    100% { clip-path: inset(0 100% 0 0); }
+  }
+  
+  @keyframes slideUpIn {
+    0% { clip-path: inset(100% 0 0 0); }
+    100% { clip-path: inset(0 0 0 0); }
+  }
+  
+  @keyframes slideUpOut {
+    0% { clip-path: inset(0 0 0 0); }
+    100% { clip-path: inset(0 0 100% 0); }
+  }
+  
+  @keyframes slideDownIn {
+    0% { clip-path: inset(0 0 100% 0); }
+    100% { clip-path: inset(0 0 0 0); }
+  }
+  
+  @keyframes slideDownOut {
+    0% { clip-path: inset(0 0 0 0); }
+    100% { clip-path: inset(100% 0 0 0); }
+  }
