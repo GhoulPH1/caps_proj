@@ -1,7 +1,7 @@
 import express from 'express';
-import { upload, uploadFile } from '../controllers/file.controller.js';
+import { upload, uploadFile, listFiles, getFileByCid, getFilesByFilename, deleteFile } from '../controllers/file.controller.js';
 import { verifyFileIntegrity } from '../controllers/auditor.controller.js';
-import { validateToken } from '../middleware/auth.middleware.js'; // Import validateToken
+import { validateToken } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -38,6 +38,50 @@ router.post('/verify-cid', validateToken, (req, res) => {
     } catch (error) {
       console.error('Unhandled verify-cid error:', error);
       res.status(500).json({ error: 'Server error in verify-cid route' });
+    }
+});
+
+// NEW route for listing all files
+router.get('/list', validateToken, (req, res) => {
+    console.log('List files route hit');
+    try {
+      listFiles(req, res);
+    } catch (error) {
+      console.error('Unhandled list files error:', error);
+      res.status(500).json({ error: 'Server error in list files route' });
+    }
+});
+
+// NEW route for getting file by CID
+router.get('/:cid', validateToken, (req, res) => {
+    console.log(`Get file route hit for CID: ${req.params.cid}`);
+    try {
+      getFileByCid(req, res);
+    } catch (error) {
+      console.error('Unhandled get file error:', error);
+      res.status(500).json({ error: 'Server error in get file route' });
+    }
+});
+
+// NEW route for getting files by filename and extension
+router.get('/name/:filename/ext/:extension', validateToken, (req, res) => {
+    console.log(`Get files by filename route hit: ${req.params.filename}.${req.params.extension}`);
+    try {
+      getFilesByFilename(req, res);
+    } catch (error) {
+      console.error('Unhandled get files by filename error:', error);
+      res.status(500).json({ error: 'Server error in get files by filename route' });
+    }
+});
+
+// NEW route for deleting file by CID
+router.delete('/:cid', validateToken, (req, res) => {
+    console.log(`Delete file route hit for CID: ${req.params.cid}`);
+    try {
+      deleteFile(req, res);
+    } catch (error) {
+      console.error('Unhandled delete file error:', error);
+      res.status(500).json({ error: 'Server error in delete file route' });
     }
 });
 

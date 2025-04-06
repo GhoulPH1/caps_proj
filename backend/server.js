@@ -13,11 +13,13 @@ import compression from 'compression';
 // Import routes
 import userRoutes from './routes/user.route.js';
 import uploadRoutes from './routes/file.route.js';
+import passwordRoutes from './routes/password.route.js';
 
 // Import configuration and middleware
 import { connectDB } from './config/db.js';
 import { configurePassport } from './controllers/user.controller.js';
 import { errorHandler } from './middleware/errorHandler.js';
+
 // import { validateToken } from './middleware/auth.middleware.js';
 
 // Load environment variables
@@ -90,6 +92,7 @@ app.get('/', (req, res) => {
 // Routes
 app.use("/api/user", userRoutes);
 app.use('/api', uploadRoutes);
+app.use('/api/password', passwordRoutes);
 
 // 404 Handler for Undefined Routes
 app.use((req, res, next) => {

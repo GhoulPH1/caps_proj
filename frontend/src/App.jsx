@@ -4,14 +4,14 @@ import { useUserStore } from './store/user.js';
 // import LoadingScreen from './components/LoadingScreen.jsx';
 
 // Lazy load components
-const LoginPage = lazy(() => import('./pages/LoginPage'));
-const RegisterPage = lazy(() => import('./pages/RegisterPage'));
-const HomePage = lazy(() => import('./pages/HomePage'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const FileVerifyer = lazy(() => import('./components/FileCheck'));
-const FileUpload = lazy(() => import('./components/FileUpload'));
-const LoadingScreen  = lazy(() => import('./components/LoadingScreen')); // Create a loading component
-
+const LoginPage = lazy(() => import('./pages/main/LoginPage.jsx'));
+const RegisterPage = lazy(() => import('./pages/main/RegisterPage.jsx'));
+const HomePage = lazy(() => import('./pages/main/HomePage.jsx'));
+const Dashboard = lazy(() => import('./pages/dashboard/Dashboard.jsx'));
+const FileVerifyer = lazy(() => import('./components/file/FileCheck'));
+const FileUpload = lazy(() => import('./components/file/FileUpload'));
+const LoadingScreen  = lazy(() => import('./components/LoadingScreen.jsx')); 
+const PasswordReset = lazy(() => import('./components/PasswordReset.jsx'));
 // PrivateRoute Component
 const PrivateRoute = () => {
   const { currentUser } = useUserStore();
@@ -25,6 +25,7 @@ function App() {
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
         {/* Public Routes */}
+        <Route path="/password-reset" element={<PasswordReset />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/" element={<HomePage />} />
@@ -32,6 +33,7 @@ function App() {
 
         {/* Protected Routes */}
         <Route element={<PrivateRoute />}>
+         
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/upload" element={<FileUpload />} />
           <Route path="/verify-file" element={<FileVerifyer />} />

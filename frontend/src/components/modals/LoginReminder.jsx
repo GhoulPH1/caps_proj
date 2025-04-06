@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useUserStore } from '../store/user';
+import { useUserStore } from '../../store/user';
 
 const LoginReminder = ({ onClose }) => {
   const navigate = useNavigate();

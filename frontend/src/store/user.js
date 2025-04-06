@@ -1,324 +1,357 @@
 import { create } from 'zustand';
 
-export const useUserStore = create((set, get) => ({
-  // State
-  users: [],
-  currentUser: null,
-  isLoading: false,
-  error: null,
-  showLoginPopup: false,
-  
-  // Basic state setters
-  setUsers: (users) => set({ users }),
-  setCurrentUser: (user) => set({ currentUser: user }),
-  setLoading: (isLoading) => set({ isLoading }),
-  setShowLoginPopup: (showLoginPopup) => set({ showLoginPopup }),
-  setError: (error) => {
-    set({ error });
-    // Clear error after 5 seconds
-    if (error) {
-      setTimeout(() => set({ error: null }), 5000);
-    }
-  },
-  
-  // Check if user is authenticated
-  checkAuthentication: () => {
-    const { currentUser } = get();
-    if (!currentUser) {
-      set({ showLoginPopup: true });
-      return false;
-    }
-    return true;
-  },
-  
-  // Helper for authenticated navigation
-  authenticatedNavigation: (navigate, path) => {
-    const { currentUser } = get();
-    if (currentUser) {
-      navigate(path);
-      return true;
-    } else {
-      set({ showLoginPopup: true });
-      return false;
-    }
-  },
-  
-  // Validate email with regex
-  validateEmail: (email) => {
-    if (!email) {
-      throw new Error('Email is required');
-    }
-    
-    if (email.length > 100) {
-      throw new Error('Email is too long');
-    }
-    
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!emailRegex.test(email)) {
-      throw new Error('Please enter a valid email address');
-    }
-    
-    return true;
-  },
-  
-  // Validate password with regex
-  validatePassword: (password) => {
-    if (!password) {
-      throw new Error('Password is required');
-    }
-    
-    if (password.length < 8) {
-      throw new Error('Password must be at least 8 characters long');
-    }
-    
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    if (!passwordRegex.test(password)) {
-      throw new Error('Password must include uppercase, lowercase, number, and special character');
-    }
-    
-    return true;
-  },
-  
-  // Validate PIN format
-  validatePinFormat: (pin) => {
-    if (!/^\d{4}$/.test(pin)) {
-      throw new Error('PIN must be exactly 4 digits');
-    }
-    return true;
-  },
-  
-  // First step: validate credentials
-  validateCredentials: async (email, password) => {
+export const useUserStore = create((set, get) => {
+  // Helper functions
+  const apiRequest = async (endpoint, options = {}) => {
+    const res = await fetch(`/api/${endpoint}`, {
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      ...options
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.msg || 'Request failed');
+    return data;
+  };
+
+  const withLoading = async (fn) => {
     set({ isLoading: true, error: null });
-    
     try {
-      // Internal validation
-      const self = get();
-      self.validateEmail(email);
-      self.validatePassword(password);
+      const result = await fn();
+      return result;
+    } catch (error) {
+      set({ error: error.message });
+      setTimeout(() => set({ error: null }), 5000);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  };
+
+  // Validators
+  const validators = {
+    email: (email) => {
+      if (!email || email.length > 100) throw new Error(email ? 'Email is too long' : 'Email is required');
+      if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) 
+        throw new Error('Please enter a valid email address');
+      return true;
+    },
+    password: (password) => {
+      if (!password) throw new Error('Password is required');
+      if (password.length < 8) throw new Error('Password must be at least 8 characters long');
+      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/.test(password))
+        throw new Error('Password must include uppercase, lowercase, number, and special character');
+      return true;
+    },
+    pin: (pin) => {
+      if (!/^\d{4}$/.test(pin)) throw new Error('PIN must be exactly 4 digits');
+      return true;
+    }
+  };
+
+  return {
+    // State
+    users: [],
+    currentUser: null,
+    isLoading: false,
+    error: null,
+    showLoginPopup: false,
+    pinVerificationRequired: false,
+    userId: null,
+    pinAttemptsLeft: 3,
+    pinCooldownTime: null,
+    cooldownCount: 1,
+    showSecurityQuestion: false,
+    securityPhrase: '',
+    
+    // Setters
+    setUsers: (users) => set({ users }),
+    setCurrentUser: (user) => set({ currentUser: user }),
+    setLoading: (isLoading) => set({ isLoading }),
+    setShowLoginPopup: (showLoginPopup) => set({ showLoginPopup }),
+    setPinVerificationRequired: (required, userId = null) => set({ pinVerificationRequired: required, userId }),
+    setError: (error) => {
+      set({ error });
+      if (error) setTimeout(() => set({ error: null }), 5000);
+    },
+    
+    // Auth state management
+    resetPinState: () => set({
+      pinVerificationRequired: false,
+      userId: null,
+      error: null,
+      showSecurityQuestion: false,
+      securityPhrase: '',
+      pinAttemptsLeft: 3,
+      pinCooldownTime: null,
+      cooldownCount: 0
+    }),
+    
+    startPinCooldown: (seconds) => {
+      set(state => ({ pinCooldownTime: seconds, cooldownCount: state.cooldownCount + 1 }));
       
-      // API validation
-      const res = await fetch("/api/user/validate-credentials", {
+      const timer = setInterval(() => {
+        set((state) => {
+          if (state.pinCooldownTime <= 1) {
+            clearInterval(timer);
+            return { pinCooldownTime: null, pinAttemptsLeft: 3 };
+          }
+          return { pinCooldownTime: state.pinCooldownTime - 1 };
+        });
+      }, 1000);
+    },
+    
+    // Auth helpers
+    checkAuthentication: () => {
+      const { currentUser } = get();
+      if (!currentUser) {
+        set({ showLoginPopup: true });
+        return false;
+      }
+      return true;
+    },
+    
+    authenticatedNavigation: (navigate, path) => {
+      const { currentUser } = get();
+      if (currentUser) {
+        navigate(path);
+        return true;
+      }
+      set({ showLoginPopup: true });
+      return false;
+    },
+    
+    // Validators exposed to components
+    validateEmail: validators.email,
+    validatePassword: validators.password,
+    validatePinFormat: validators.pin,
+    
+    // Auth flow methods
+    validateCredentials: async (email, password) => withLoading(async () => {
+      const self = get();
+      validators.email(email);
+      validators.password(password);
+      
+      const data = await apiRequest('user/validate-credentials', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
       
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.msg || 'Authentication failed');
-      }
-      
-      set({ isLoading: false });
+      set({ pinVerificationRequired: true, userId: data.userId || data.user?._id });
       return data;
-    } catch (error) {
-      set({ isLoading: false, error: error.message });
-      throw error;
-    }
-  },
-  
-  // Second step: validate PIN
-  validatePin: async (userId, pin) => {
-    set({ isLoading: true, error: null });
+    }),
     
-    try {
-      // Internal validation
+    validatePin: async (pin, providedUserId = null) => {
       const self = get();
-      self.validatePinFormat(pin);
+      return withLoading(async () => {
+        validators.pin(pin);
+        const userId = providedUserId || self.userId;
+        
+        if (!userId) throw new Error('User identification is missing');
+        if (self.pinCooldownTime !== null) 
+          throw new Error(`Too many incorrect attempts. Try again in ${self.pinCooldownTime} seconds.`);
+        
+        try {
+          const data = await apiRequest('user/validate-pin', {
+            method: 'POST',
+            body: JSON.stringify({ userId, pin })
+          });
+          
+          set({ 
+            pinVerificationRequired: false, 
+            pinAttemptsLeft: 3,
+            cooldownCount: 0,
+            userId: null 
+          });
+          
+          return data;
+        } catch (error) {
+          // Handle specific error cases
+          if (error.message.includes('requireSecurityQuestion')) {
+            await self.fetchSecurityPhrase(userId);
+            set({ showSecurityQuestion: true });
+            return { success: false, requireSecurityQuestion: true };
+          }
+          
+          // Track attempts
+          const attemptsLeft = Math.max(0, self.pinAttemptsLeft - 1);
+          set({ pinAttemptsLeft: attemptsLeft });
+          
+          // Start cooldown if needed
+          if (attemptsLeft === 0) {
+            const seconds = error.message.includes('Try again in') 
+              ? parseInt(error.message.match(/\d+/)[0]) || 30 
+              : 30;
+            self.startPinCooldown(seconds);
+          }
+          
+          throw error;
+        }
+      });
+    },
+    
+    fetchSecurityPhrase: async (userId) => withLoading(async () => {
+      const data = await apiRequest(`user/security-phrase/${userId}`);
+      set({ securityPhrase: data.securityPhrase || "What was your first pet's name?" });
+      return data;
+    }),
+    
+    verifySecurityAnswer: async (securityAnswer) => withLoading(async () => {
+      if (!securityAnswer.trim()) throw new Error('Please provide an answer');
       
-      // API validation
-      const res = await fetch("/api/user/validate-pin", {
+      const userId = get().userId;
+      if (!userId) throw new Error('User identification is missing');
+      
+      const data = await apiRequest('user/verify-security-question', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, pin })
+        body: JSON.stringify({ userId, securityAnswer })
       });
       
-      const data = await res.json();
+      set({ 
+        showSecurityQuestion: false,
+        pinVerificationRequired: false,
+        pinAttemptsLeft: 3,
+        cooldownCount: 0,
+        userId: null
+      });
       
-      if (!res.ok) {
-        throw new Error(data.msg || 'PIN verification failed');
-      }
-      
-      set({ isLoading: false });
       return data;
-    } catch (error) {
-      set({ isLoading: false, error: error.message });
-      throw error;
-    }
-  },
-  
-  // Create a new user
-  createUsers: async (newUser) => {
-    const self = get();
+    }),
     
-    try {
+    // User management
+    createUsers: async (newUser) => withLoading(async () => {
       // Validate all required fields
-      if (!newUser.name || !newUser.birthday || !newUser.sexualOrientation || 
-          !newUser.email || !newUser.password || !newUser.pin || !newUser.age) {
+      const requiredFields = ['name', 'birthday', 'sexualOrientation', 'email', 
+                             'password', 'pin', 'age', 'securityPhrase', 'securityAnswer'];
+      
+      if (!requiredFields.every(field => newUser[field])) {
         throw new Error('Missing required fields');
       }
       
-      // Validate email and password format
-      self.validateEmail(newUser.email);
-      self.validatePassword(newUser.password);
-      self.validatePinFormat(newUser.pin);
+      validators.email(newUser.email);
+      validators.password(newUser.password);
+      validators.pin(newUser.pin);
       
-      // Set loading state
-      set({ isLoading: true, error: null });
-      
-      // Make API request
-      const res = await fetch("/api/user", { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
+      const data = await apiRequest('user', {
+        method: 'POST',
         body: JSON.stringify(newUser)
       });
       
-      // Parse response data
-      const data = await res.json();
-      
-      // Check if request was successful
-      if (!res.ok) {
-        throw new Error(data.msg || 'Failed to create user');
-      }
-      
-      // Update store state
-      set((state) => ({
+      set(state => ({
         users: [...state.users, data.data],
-        currentUser: data.data,
-        isLoading: false,
-        error: null
+        currentUser: data.data
       }));
       
       return { success: true, msg: "User Registration Successful" };
-    } catch (error) {
-      // Handle errors
-      set({ isLoading: false, error: error.message });
-      throw error;
-    }
-  },
-  
-  // Login user (final step)
-  loginUser: async (credentials) => {
-    const self = get();
+    }),
     
-    try {
-      // Validate required fields
-      if (!credentials.email || !credentials.password || !credentials.pin) {
-        throw new Error('Email, password, and PIN are required');
-      }
+    loginUser: async (credentials) => {
+      const self = get();
       
-      // Validate formats
-      self.validateEmail(credentials.email);
-      self.validatePassword(credentials.password);
-      self.validatePinFormat(credentials.pin);
+      return withLoading(async () => {
+        // Validate inputs
+        if (!credentials.email || !credentials.password) {
+          throw new Error('Email and password are required');
+        }
+        
+        // Step 1: Validate credentials
+        const credentialsResult = await self.validateCredentials(credentials.email, credentials.password);
+        
+        // Step 2: Validate PIN if provided
+        if (credentials.pin) {
+          validators.pin(credentials.pin);
+          await self.validatePin(credentials.pin);
+        } else {
+          // Return early, requiring PIN input
+          return { 
+            success: true, 
+            requirePin: true, 
+            userId: credentialsResult.userId || credentialsResult.id
+          };
+        }
+        
+        // Complete login
+        const data = await apiRequest('user/login', {
+          method: 'POST',
+          body: JSON.stringify(credentials)
+        });
+        
+        // Store token
+        localStorage.setItem('token', data.token);
+        
+        set({
+          currentUser: data.user,
+          showLoginPopup: false,
+          pinVerificationRequired: false,
+          userId: null
+        });
+        
+        return { success: true, msg: "Login Successful" };
+      });
+    },
+    
+    completeLogin: async (additionalData = {}) => withLoading(async () => {
+      const userId = get().userId;
+      if (!userId) throw new Error('Session expired, please login again');
       
-      // Set loading state
-      set({ isLoading: true, error: null });
+      // Fetch user data
+      const userData = await apiRequest(`user/${userId}`);
       
-      // Make API request to complete login
-      const res = await fetch("/api/user/login", {
+      // Generate token
+      const tokenData = await apiRequest('user/generate-token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials)
+        body: JSON.stringify({ 
+          userId,
+          email: additionalData.email,
+          password: additionalData.password 
+        })
       });
       
-      // Parse response data
-      const data = await res.json();
+      // Store token
+      localStorage.setItem('token', tokenData.token);
       
-      // Check if request was successful
-      if (!res.ok) {
-        throw new Error(data.msg || 'Login failed');
-      }
-
-      // Store the token in localStorage
-      localStorage.setItem('token', data.token);
-      
-      // Update store state
       set({
-        currentUser: data.user,
-        isLoading: false,
-        error: null,
-        showLoginPopup: false
+        currentUser: userData.user,
+        showLoginPopup: false,
+        pinVerificationRequired: false,
+        showSecurityQuestion: false,
+        userId: null,
+        pinAttemptsLeft: 3,
+        cooldownCount: 0
       });
       
       return { success: true, msg: "Login Successful" };
-    } catch (error) {
-      // Handle errors
-      set({ isLoading: false, error: error.message });
-      throw error;
-    }
-  },
-  
-  // Initialize user session from token
-  initUserSession: async () => {
-    const token = localStorage.getItem('token');
+    }),
     
-    if (!token) {
-      return { success: false };
-    }
-    
-    set({ isLoading: true });
-    
-    try {
-      // Verify token and get user data
-      const res = await fetch("/api/user/session", {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+    initUserSession: async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return { success: false };
+      
+      return withLoading(async () => {
+        try {
+          const data = await apiRequest('user/session', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          set({ currentUser: data.user });
+          return { success: true };
+        } catch (error) {
+          localStorage.removeItem('token');
+          set({ currentUser: null });
+          return { success: false, msg: error.message };
         }
       });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        localStorage.removeItem('token');
-        throw new Error(data.msg || 'Session expired');
+    },
+    
+    logoutUser: async () => withLoading(async () => {
+      try {
+        await apiRequest('user/logout', { method: 'POST' });
+      } catch (error) {
+        // Continue with logout even if API request fails
       }
       
-      set({
-        currentUser: data.user,
-        isLoading: false
-      });
-      
-      return { success: true };
-    } catch (error) {
-      set({ 
-        currentUser: null,
-        isLoading: false, 
-        error: error.message 
-      });
-      return { success: false, msg: error.message };
-    }
-  },
-  
-  // Logout user
-  logoutUser: async () => {
-    // Set loading state
-    set({ isLoading: true });
-    
-    try {
-      // Make API request (if needed)
-      await fetch("/api/user/logout", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      // Remove the token from localStorage
       localStorage.removeItem('token');
-      
-      // Update store state
-      set({
-        currentUser: null,
-        isLoading: false,
-        error: null
-      });
+      set({ currentUser: null });
       
       return { success: true, msg: "Logout Successful" };
-    } catch (error) {
-      // Handle errors
-      set({ isLoading: false, error: error.message });
-      return { success: false, msg: error.message };
-    }
-  }
-}));
+    })
+  };
+});

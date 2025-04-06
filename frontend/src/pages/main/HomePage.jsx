@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import NavBar from "../components/NavBar";
-import SideBar from "../components/SideBar";
-import { useUserStore } from '../store/user';
-import LoginReminder from '../components/LoginReminder';
+import NavBar from "../../components/gui/NavBar";
+import SideBar from "../../components/gui/SideBar";
+import { useUserStore } from '../../store/user';
+import LoginReminder from '../../components/modals/LoginReminder';
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -66,7 +66,7 @@ const HomePage = () => {
       <div className="ml-10 mb-5 absolute bottom-6 left-6 flex space-x-10 text-gray-400 text-[10px] z-40">
         <motion.button onClick={() => authenticatedNavigation(navigate, '/verify-file')} className={`${currentUser ? 'hover:text-white' : 'text-gray-600 cursor-not-allowed'} p-5 mr-25 transition-colors duration-300`} whileHover={{ scale: 1.1 }}>HISTORY</motion.button>
         <motion.button onClick={() => authenticatedNavigation(navigate, '/upload')} className={`${currentUser ? 'hover:text-white' : 'text-gray-600 cursor-not-allowed'} p-5 mr-25 transition-colors duration-300`} whileHover={{ scale: 1.1 }}>LOGS</motion.button>
-        <motion.button onClick={() => authenticatedNavigation(navigate, '/upload')} className={`${currentUser ? 'hover:text-white' : 'text-gray-600 cursor-not-allowed'} p-5 transition-colors duration-300`} whileHover={{ scale: 1.1 }}>CONTACT US</motion.button>
+        <motion.button onClick={() => authenticatedNavigation(navigate, '/dashboard')} className={`${currentUser ? 'hover:text-white' : 'text-gray-600 cursor-not-allowed'} p-5 transition-colors duration-300`} whileHover={{ scale: 1.1 }}>CONTACT US</motion.button>
       </div>
 
       <div className="mb-11 mr-10 absolute bottom-5 right-10 text-white flex flex-col items-end text-right ">

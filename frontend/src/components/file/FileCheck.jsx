@@ -31,7 +31,7 @@ const FileCheck = () => {
     } catch (error) {
       setResult({ error: error.response?.data?.message || 'Verification failed' });
     }
-  }
+  };
 
   return (
     <div className="p-4 border rounded-lg shadow">
