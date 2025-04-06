@@ -1,10 +1,11 @@
 import crypto from 'crypto-js';
 const { SHA256 } = crypto;
 import { MerkleTree } from "merkletreejs";
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 
 const BLOCKCHAIN_FILE = path.join(process.cwd(), 'blockchain.json');
+const DIFFICULTY = 2; // Moved to constant
 
 class Block {
     constructor(index, timestamp, transactions, previousHash = '', hash = '', nonce = 0, merkleRoot = '') {
@@ -18,30 +19,29 @@ class Block {
     }
 
     calculateHash() {
+        // Concatenate with template literals for better performance
         return SHA256(
-            this.index +
-            this.previousHash +
-            this.timestamp +
-            this.merkleRoot +
-            this.nonce
+            `${this.index}${this.previousHash}${this.timestamp}${this.merkleRoot}${this.nonce}`
         ).toString();
     }
 
     calculateMerkleRoot() {
-        if (this.transactions.length === 0) return '';
+        if (!this.transactions.length) return '';
         const leaves = this.transactions.map(tx => SHA256(tx).toString());
         const tree = new MerkleTree(leaves, SHA256);
         return tree.getRoot().toString('hex');
     }
 
     mineBlock(difficulty) {
-        while (this.hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
+        const target = '0'.repeat(difficulty);
+        while (this.hash.substring(0, difficulty) !== target) {
             this.nonce++;
             this.hash = this.calculateHash();
         }
         console.log(`Block mined: ${this.hash}`);
     }
 
+    // Static factory pattern for cleaner instantiation
     static fromData(data) {
         return new Block(
             data.index,
@@ -58,9 +58,9 @@ class Block {
 class Blockchain {
     constructor() {
         this.chain = [];
-        this.difficulty = 2;
+        this.difficulty = DIFFICULTY;
         this.pendingTransactions = [];
-        this.loadBlockchain();
+        this.initialized = this.loadBlockchain();
     }
 
     createGenesisBlock() {
@@ -73,9 +73,10 @@ class Blockchain {
 
     addTransaction(hashedCid) {
         this.pendingTransactions.push(hashedCid);
+        return this; // Enable method chaining
     }
 
-    minePendingTransactions() {
+    async minePendingTransactions() {
         const block = new Block(
             this.chain.length,
             new Date().toISOString(),
@@ -88,61 +89,68 @@ class Blockchain {
         this.chain.push(block);
         this.pendingTransactions = [];
 
-        this.saveBlockchain();
+        await this.saveBlockchain();
+        return block; // Return the mined block for potential usage
     }
 
     isChainValid() {
-        for (let i = 1; i < this.chain.length; i++) {
-            const currentBlock = this.chain[i];
-            const previousBlock = this.chain[i - 1];
-
-            if (currentBlock.hash !== currentBlock.calculateHash()) {
-                return false;
-            }
-
-            if (currentBlock.previousHash !== previousBlock.hash) {
-                return false;
-            }
-        }
-        return true;
+        return this.chain.slice(1).every((currentBlock, i) => {
+            const previousBlock = this.chain[i];
+            return (
+                currentBlock.hash === currentBlock.calculateHash() &&
+                currentBlock.previousHash === previousBlock.hash
+            );
+        });
     }
 
     getBlockContainingHash(hash) {
-        for (const block of this.chain) {
-            if (block.transactions.includes(hash)) {
-                return block;
-            }
-        }
-        return null;
+        return this.chain.find(block => block.transactions.includes(hash)) || null;
     }
 
-    saveBlockchain() {
+    async saveBlockchain() {
         try {
             const data = JSON.stringify(this.chain, null, 2);
-            fs.writeFileSync(BLOCKCHAIN_FILE, data);
+            await fs.writeFile(BLOCKCHAIN_FILE, data);
             console.log('[Blockchain] Blockchain saved successfully!');
         } catch (error) {
             console.error('[Blockchain] Failed to save blockchain:', error);
+            throw error; // Propagate error for better error handling
         }
     }
 
-    loadBlockchain() {
+    async loadBlockchain() {
         try {
-            if (fs.existsSync(BLOCKCHAIN_FILE)) {
-                const rawData = fs.readFileSync(BLOCKCHAIN_FILE);
+            try {
+                const rawData = await fs.readFile(BLOCKCHAIN_FILE);
                 const chainData = JSON.parse(rawData);
                 this.chain = chainData.map(blockData => Block.fromData(blockData));
                 console.log('[Blockchain] Blockchain loaded from disk.');
-            } else {
-                this.chain = [this.createGenesisBlock()];
-                this.saveBlockchain();
-                console.log('[Blockchain] Genesis block created.');
+            } catch (error) {
+                if (error.code === 'ENOENT') {
+                    this.chain = [this.createGenesisBlock()];
+                    await this.saveBlockchain();
+                    console.log('[Blockchain] Genesis block created.');
+                } else {
+                    throw error;
+                }
             }
+            return true;
         } catch (error) {
             console.error('[Blockchain] Failed to load blockchain:', error);
             this.chain = [this.createGenesisBlock()];
+            return false;
         }
+    }
+
+    // New utility methods
+    getChainLength() {
+        return this.chain.length;
+    }
+    
+    getPendingTransactionsCount() {
+        return this.pendingTransactions.length;
     }
 }
 
+// Export as singleton
 export const SynoChain = new Blockchain();

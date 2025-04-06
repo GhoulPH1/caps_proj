@@ -1,34 +1,75 @@
-import User from '../models/user.model.js';
+import AuthService from '../services/auth.service.js';
 import mongoose from 'mongoose';
-import bcrypt from 'bcrypt';
+import User from '../models/user.model.js';
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
-import jwt from 'jsonwebtoken';
 
-// Configuration constants
-const AUTH_CONFIG = {
-  ATTEMPT_LIMIT: 3,
-  COOLDOWN_TIME: 30 * 1000, // 30 seconds
-  MAX_COOLDOWNS: 2,
-  JWT_EXPIRATION: '1h'
+// Utility functions
+const validateId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
 };
 
-// Helper functions
-const generateToken = (userId) => {
-  return jwt.sign(
-    { userId }, 
-    process.env.JWT_SECRET, 
-    { 
-      expiresIn: AUTH_CONFIG.JWT_EXPIRATION,
-      algorithm: 'HS256'
+export const refreshToken = async (req, res) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
+    
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        msg: 'No refresh token provided'
+      });
     }
-  );
+    
+    const tokens = await AuthService.refreshAccessToken(refreshToken);
+    
+    // Send new access token in response
+    const response = {
+      success: true,
+      accessToken: tokens.accessToken
+    };
+    
+    // If a new refresh token was generated, send it in a secure cookie
+    if (tokens.refreshed) {
+      res.cookie('refreshToken', tokens.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+    }
+    
+    res.status(200).json(response);
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      msg: error.message || 'Invalid refresh token'
+    });
+  }
 };
 
-const sanitizeUser = (user) => {
-  const userObj = user.toObject ? user.toObject() : user;
-  const { password, pin, securityAnswer, ...sanitizedUser } = userObj;
-  return sanitizedUser;
+const handleServiceError = (res, error) => {
+  // Handle validation errors
+  if (error.name === 'ValidationError') {
+    const messages = Object.values(error.errors).map(val => val.message);
+    return res.status(400).json({ 
+      success: false, 
+      msg: messages.join(', ')
+    });
+  }
+  
+  // Handle duplicate key errors (e.g., email already exists)
+  if (error.code === 11000) {
+    return res.status(400).json({ 
+      success: false, 
+      msg: "Email already exists"
+    });
+  }
+
+  // Handle standard errors with known messages
+  return res.status(400).json({ 
+    success: false, 
+    msg: error.message || "An error occurred"
+  });
 };
 
 const handleServerError = (res, error, operation) => {
@@ -38,10 +79,6 @@ const handleServerError = (res, error, operation) => {
     msg: "Server error", 
     error: error.message || "Unknown error"
   });
-};
-
-const validateId = (id) => {
-  return mongoose.Types.ObjectId.isValid(id);
 };
 
 // Controller functions
@@ -55,52 +92,23 @@ export const fetchUsers = async (req, res) => {
 };
 
 export const userRegister = async (req, res) => { 
-  const userData = req.body;
-
   try {
-    // Comprehensive field validation based on schema requirements
-    const requiredFields = [
-      'name', 'email', 'password', 'age', 
-      'birthday', 'sexualOrientation', 
-      'pin', 'securityPhrase', 'securityAnswer'
-    ];
-    
-    const missingFields = requiredFields.filter(field => !userData[field]);
-    if (missingFields.length > 0) {
-      return res.status(400).json({ 
-        success: false,  
-        msg: `Please include all required fields: ${missingFields.join(', ')}` 
-      });
-    }
-
-    // Create and save user
-    const newUser = new User(userData);
-    await newUser.save();
+    const userData = req.body;
+    const user = await AuthService.registerUser(userData);
     
     res.status(201).json({ 
       success: true, 
       msg: "User registered successfully",
-      data: sanitizeUser(newUser)
+      data: user
     }); 
   } catch (error) { 
-    // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(val => val.message);
-      return res.status(400).json({ 
-        success: false, 
-        msg: messages.join(', ')
-      });
+    // Handle service-specific errors first
+    try {
+      handleServiceError(res, error);
+    } catch (serverError) {
+      // Fall back to server error
+      handleServerError(res, error, 'userRegister');
     }
-    
-    // Handle duplicate key errors (e.g., email already exists)
-    if (error.code === 11000) {
-      return res.status(400).json({ 
-        success: false, 
-        msg: "Email already exists"
-      });
-    }
-    
-    handleServerError(res, error, 'userRegister');
   } 
 };
 
@@ -134,65 +142,15 @@ export const updateCredentials = async (req, res) => {
       return res.status(400).json({ success: false, msg: "Invalid User ID format" });
     }
 
-    // Check if user exists
-    const existingUser = await User.findById(id);
-    if (!existingUser) {
-      return res.status(404).json({ success: false, msg: "User not found" });
-    }
-
-    // Validate and process updates
-    const updateValidations = {
-      password: async (value) => {
-        if (await bcrypt.compare(value, existingUser.password)) {
-          throw new Error("New password cannot be the same as the current password");
-        }
-        return value;
-      },
-      pin: async (value) => {
-        if (!/^\d{4}$/.test(value)) {
-          throw new Error("PIN must be exactly 4 digits");
-        }
-        if (await bcrypt.compare(value, existingUser.pin)) {
-          throw new Error("New PIN cannot be the same as the current PIN");
-        }
-        return value;
-      },
-      securityPhrase: (value) => {
-        if (value.trim().length < 10) {
-          throw new Error("Security phrase must be at least 10 characters long");
-        }
-        return value;
-      }
-    };
-
-    // Validate and process each update
-    for (const [key, value] of Object.entries(updates)) {
-      if (updateValidations[key]) {
-        updates[key] = await updateValidations[key](value);
-      }
-    }
-
-    // Update the user in the database
-    const updatedUser = await User.findByIdAndUpdate(id, updates, {
-      new: true,          // Return the updated document
-      runValidators: true // Ensure schema validators run
-    });
-
-    res.status(200).json({ success: true, data: sanitizeUser(updatedUser) });
+    const updatedUser = await AuthService.updateUserCredentials(id, updates);
+    res.status(200).json({ success: true, data: updatedUser });
 
   } catch (error) {
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      const messages = Object.values(error.errors).map(val => val.message);
-      return res.status(400).json({ success: false, msg: messages });
+    try {
+      handleServiceError(res, error);
+    } catch (serverError) {
+      handleServerError(res, error, 'updateCredentials');
     }
-
-    // Handle duplicate key errors
-    if (error.code === 11000) {
-      return res.status(400).json({ success: false, msg: "Email already exists" });
-    }
-
-    handleServerError(res, error, 'updateCredentials');
   }
 };
 
@@ -200,33 +158,31 @@ export const validateCredentials = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Validate input
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        msg: 'Email and password are required'
-      });
-    }
-
-    // Find user by email
-    const user = await User.findOne({ email });
+    const result = await AuthService.authenticateUser(email, password);
     
-    // Check if user exists and password is correct
-    if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({
-        success: false,
-        msg: 'Invalid email or password'
-      });
-    }
-
+    // Generate refresh token and access token
+    const tokens = await AuthService.generateTokens(result.user);
+    
+    // Set refresh token in HTTP-only cookie
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    
     res.status(200).json({
       success: true,
       msg: 'Credentials verified',
-      user: sanitizeUser(user),
-      token: generateToken(user._id)
+      user: result.user,
+      token: tokens.accessToken // This is the access token
     });
   } catch (error) {
-    handleServerError(res, error, 'validateCredentials');
+    try {
+      handleServiceError(res, error);
+    } catch (serverError) {
+      handleServerError(res, error, 'validateCredentials');
+    }
   }
 };
 
@@ -234,61 +190,33 @@ export const validatePin = async (req, res) => {
   const { userId, pin } = req.body;
 
   try {
-    // Validate input
-    if (!userId || !pin) {
-      return res.status(400).json({ success: false, msg: 'User ID and PIN are required' });
-    }
-
-    if (!/^\d{4}$/.test(pin)) {
-      return res.status(400).json({ success: false, msg: 'PIN must be exactly 4 digits' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, msg: 'User not found' });
-    }
-
-    // Check if user is currently locked out
-    if (user.lockoutUntil && user.lockoutUntil > Date.now()) {
-      return res.status(403).json({ success: false, msg: 'Too many attempts. Try again later.' });
-    }
-
-    // Use the comparePin method from the user model
-    const isMatch = await user.comparePin(pin);
+    const result = await AuthService.validatePin(userId, pin);
     
-    if (!isMatch) {
-      user.pinAttempts = (user.pinAttempts || 0) + 1;
-
-      if (user.pinAttempts >= AUTH_CONFIG.ATTEMPT_LIMIT) {
-        user.pinAttempts = 0;
-        user.cooldowns = (user.cooldowns || 0) + 1;
-        user.lockoutUntil = Date.now() + AUTH_CONFIG.COOLDOWN_TIME;
-        await user.save();
-        return res.status(403).json({ success: false, msg: 'Too many incorrect attempts. Try again in 30 seconds.' });
-      }
-
-      await user.save();
-      return res.status(401).json({ success: false, msg: 'Invalid PIN' });
-    }
-
-    // If user exceeded max cooldowns, enforce security question verification
-    if (user.cooldowns >= AUTH_CONFIG.MAX_COOLDOWNS) {
+    // Check if security question is required
+    if (result.requireSecurityQuestion) {
       return res.status(403).json({
         success: false,
         msg: 'Verify security question to proceed.',
         requireSecurityQuestion: true
       });
     }
-
-    // Reset attempt counters on successful PIN verification
-    user.pinAttempts = 0;
-    user.cooldowns = 0;
-    user.lockoutUntil = null;
-    await user.save();
-
+    
     res.status(200).json({ success: true, msg: 'PIN verified' });
   } catch (error) {
-    handleServerError(res, error, 'validatePin');
+    // Specific error status codes based on the error message
+    if (error.message === 'Too many attempts. Try again later.') {
+      return res.status(403).json({ success: false, msg: error.message });
+    }
+    
+    if (error.message === 'Invalid PIN') {
+      return res.status(401).json({ success: false, msg: error.message });
+    }
+    
+    try {
+      handleServiceError(res, error);
+    } catch (serverError) {
+      handleServerError(res, error, 'validatePin');
+    }
   }
 };
 
@@ -296,28 +224,19 @@ export const verifySecurityQuestion = async (req, res) => {
   const { userId, securityAnswer } = req.body;
 
   try {
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, msg: 'User not found' });
-    }
-
-    // Verify security answer
-    const isMatch = await user.compareSecurityAnswer(securityAnswer);
-    if (!isMatch) {
-      return res.status(401).json({ success: false, msg: 'Incorrect security answer' });
-    }
-
-    // Reset cooldown if security question is answered correctly
-    user.cooldowns = 0;
-    await user.save();
-
+    const result = await AuthService.verifySecurityQuestion(userId, securityAnswer);
+    
     res.status(200).json({ 
       success: true, 
       msg: 'Security question verified',
-      canProceed: true 
+      canProceed: result.canProceed 
     });
   } catch (error) {
-    handleServerError(res, error, 'verifySecurityQuestion');
+    try {
+      handleServiceError(res, error);
+    } catch (serverError) {
+      handleServerError(res, error, 'verifySecurityQuestion');
+    }
   }
 };
 
@@ -325,35 +244,31 @@ export const loginUser = async (req, res) => {
   const { email, password, pin } = req.body;
 
   try {
-    // Comprehensive input validation
-    if (!email || !password || !pin) {
-      return res.status(400).json({
-        success: false,
-        msg: 'Email, password, and PIN are required'
-      });
-    }
-
-    // Find user by email
-    const user = await User.findOne({ email });
+    const result = await AuthService.loginUser(email, password, pin);
     
-    // Comprehensive credential validation
-    if (!user || 
-        !(await user.comparePassword(password)) || 
-        !(await user.comparePin(pin))) {
-      return res.status(401).json({
-        success: false,
-        msg: 'Invalid credentials'
-      });
-    }
+    // Generate refresh token and access token
+    const tokens = await AuthService.generateTokens(result.user);
+    
+    // Set refresh token in HTTP-only cookie
+    res.cookie('refreshToken', tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
     
     res.status(200).json({
       success: true,
       msg: 'Login successful',
-      user: sanitizeUser(user),
-      token: generateToken(user._id)
+      user: result.user,
+      token: tokens.accessToken // This is the access token
     });
   } catch (error) {
-    handleServerError(res, error, 'loginUser');
+    try {
+      handleServiceError(res, error);
+    } catch (serverError) {
+      handleServerError(res, error, 'loginUser');
+    }
   }
 };
 
@@ -369,14 +284,10 @@ export const configurePassport = () => {
       { usernameField: 'email', passwordField: 'password' },
       async (email, password, done) => {
         try {
-          const user = await User.findOne({ email });
-          if (!user || !(await user.comparePassword(password))) {
-            return done(null, false, { message: 'Incorrect email or password' });
-          }
-          
-          return done(null, user);
+          const result = await AuthService.authenticateUser(email, password);
+          return done(null, result.user);
         } catch (error) {
-          return done(error);
+          return done(null, false, { message: error.message });
         }
       }
     )
@@ -413,5 +324,23 @@ export const getUserSession = async (req, res) => {
     });
   } catch (error) {
     handleServerError(res, error, 'getUserSession');
+  }
+};
+
+export const logoutUser = async (req, res) => {
+  try {
+    if (req.user) {
+      await AuthService.invalidateRefreshToken(req.user._id);
+    }
+    
+    // Clear the refresh token cookie
+    res.clearCookie('refreshToken');
+    
+    res.status(200).json({
+      success: true,
+      msg: 'Logout successful'
+    });
+  } catch (error) {
+    handleServerError(res, error, 'logoutUser');
   }
 };

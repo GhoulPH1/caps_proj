@@ -1,33 +1,36 @@
+// auth.routes.js - Update your existing routes
+
 import express from 'express';
-import { validateToken } from '../middleware/auth.middleware.js';
 import { 
-  getUserSession, 
-  removeUser, 
   userRegister, 
-  updateCredentials, 
-  fetchUsers, 
+  loginUser, 
   validateCredentials, 
   validatePin, 
-  loginUser 
+  verifySecurityQuestion,
+  refreshToken,
+  logoutUser,
+  getUserSession
 } from '../controllers/user.controller.js';
+import { validateToken, preemptiveTokenRefresh } from '../middleware/auth.middleware.js';
 
-const router = express.Router(); 
+const router = express.Router();
 
-router.post('/', userRegister); 
+// Apply the preemptive token refresh middleware to all routes
+router.use(preemptiveTokenRefresh);
 
-router.delete('/:id', removeUser);
-
-router.get('/', fetchUsers);
-
-router.patch('/:id', updateCredentials);
-
-// User authentication routes
-router.post('/validate-credentials', validateCredentials);
-
-router.post('/validate-pin', validatePin);
-
+// Auth routes
+router.post('/register', userRegister);
 router.post('/login', loginUser);
+router.post('/validate-credentials', validateCredentials);
+router.post('/validate-pin', validatePin);
+router.post('/verify-security-question', verifySecurityQuestion);
 
+// Add new route for token refresh
+router.post('/refresh-token', refreshToken);
+
+// Protected routes
 router.get('/session', validateToken, getUserSession);
+router.post('/logout', validateToken, logoutUser);
+
 
 export default router;

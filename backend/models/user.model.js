@@ -64,6 +64,14 @@
       enum: ['male', 'female', 'other', 'prefer not to say'],
       required: [true, 'Sexual orientation is required']
     },
+    refreshToken: {
+      type: String,
+      default: null
+    },
+    refreshTokenExpiry: {
+      type: Date,
+      default: null
+    },
     pinAttempts: {
       type: Number,
       default: 0
@@ -79,7 +87,11 @@
     loginAttempts: {
       type: Number,
       default: 0
-    }
+    }, 
+    lastLogin: {
+      type: Date,
+      default: null
+    },
   }, {
     timestamps: true
   });

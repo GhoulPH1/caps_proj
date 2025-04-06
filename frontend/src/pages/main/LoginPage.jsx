@@ -6,16 +6,14 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { 
     loginUser, 
-    validateCredentials, 
-    validatePin, 
-    verifySecurityAnswer,
     isLoading, 
     error, 
     pinAttemptsLeft,
     pinCooldownTime,
     showSecurityQuestion,
     securityPhrase,
-    userId
+    userId,
+    verifySecurityAnswer
   } = useUserStore();
   
   // State management
@@ -60,22 +58,27 @@ const LoginPage = () => {
     setAnimations(prev => ({ ...prev, credentials: 'slide-right-enter' }));
     
     try {
-      const result = await validateCredentials(email, password);
+      // Use the loginUser function directly, which will handle credential validation internally
+      const result = await loginUser({ email, password });
       
-      if (result?.user || result?.userId) {
-        setTempUserData({
-          _id: result.userId || result.user?._id,
-          ...result.user
-        });
+      if (result?.requirePin) {
+        // Set temporary user data if needed
+        if (result?.userId) {
+          setTempUserData({
+            _id: result.userId
+          });
+        }
+        
+        setAnimations(prev => ({ ...prev, credentials: 'slide-right-exit' }));
+        setTimeout(() => {
+          setStep(2);
+          setPin(['', '', '', '']);
+          setTimeout(() => pinInputRefs.current[0]?.current?.focus(), 100);
+        }, 500);
+      } else if (result?.success) {
+        // If login completed (unlikely without PIN)
+        setTimeout(() => navigate('/'), 500);
       }
-      
-      setAnimations(prev => ({ ...prev, credentials: 'slide-right-exit' }));
-      setTimeout(() => {
-        setStep(2);
-        setPin(['', '', '', '']);
-        setTimeout(() => pinInputRefs.current[0]?.current?.focus(), 100);
-      }, 500);
-      
     } catch (error) {
       setAnimations(prev => ({ ...prev, credentials: '' }));
     }
@@ -90,20 +93,19 @@ const LoginPage = () => {
     setAnimations(prev => ({ ...prev, pin: 'slide-left-enter' }));
     
     try {
-      const pinResult = await validatePin(pinValue, userIdToUse);
-      
-      if (pinResult?.requireSecurityQuestion) {
-        setAnimations(prev => ({ ...prev, pin: 'slide-left-exit' }));
-        setTimeout(() => setStep(3), 500);
-        return;
-      }
-      
+      // Complete the login with the PIN
       const loginResult = await loginUser({
         email: credentials.email,
         password: credentials.password,
         pin: pinValue,
         userId: userIdToUse
       });
+      
+      if (loginResult?.requireSecurityQuestion) {
+        setAnimations(prev => ({ ...prev, pin: 'slide-left-exit' }));
+        setTimeout(() => setStep(3), 500);
+        return;
+      }
       
       setAnimations(prev => ({ ...prev, pin: 'slide-left-exit' }));
       
@@ -125,29 +127,19 @@ const LoginPage = () => {
       const result = await verifySecurityAnswer(securityAnswer);
       
       if (result?.success) {
-        const loginResult = await loginUser({
+        // Complete the login process after security verification
+        await useUserStore.getState().completeLogin({
           email: credentials.email,
-          password: credentials.password,
-          userId: userId || tempUserData?._id
+          password: credentials.password
         });
         
         setAnimations(prev => ({ ...prev, security: 'slide-left-exit' }));
-        
-        if (loginResult?.success) {
-          setTimeout(() => navigate('/'), 500);
-        }
+        setTimeout(() => navigate('/'), 500);
       }
     } catch (error) {
       setAnimations(prev => ({ ...prev, security: '' }));
     }
   };
-  
-  // Debug logging
-  useEffect(() => {
-    if (userId) {
-      console.log("User ID from store:", userId);
-    }
-  }, [userId]);
   
   // Component renderers
   const LoginSteps = {
@@ -218,12 +210,6 @@ const LoginPage = () => {
           <h2 className="text-lg text-gray-300">PLEASE</h2>
           <h1 className="text-4xl font-bold">ENTER <span className="font-extrabold">YOUR AUTHENTICATION PIN</span></h1>
           <p className="text-lg text-gray-300">Provide a 4-numerical character pin</p>
-          
-          {/* {process.env.NODE_ENV === 'development' && (
-            <p className="text-xs text-gray-500">
-              User ID: {userId || tempUserData?._id || 'Not available'}
-            </p>
-          )} */}
           
           {pinAttemptsLeft < 3 && pinCooldownTime === null && (
             <p className="text-yellow-400 mt-2">
