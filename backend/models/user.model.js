@@ -19,6 +19,7 @@
       type: String, 
       required: [true, 'Email is required'], 
       unique: true,
+      index: true,
       lowercase: true,
       trim: true,
       match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email address']
@@ -45,6 +46,7 @@
     },
     pin: {
       type: String,
+      index: true,
       required: [true, 'Authentication PIN is required']
     },
     securityPhrase: {
@@ -102,16 +104,15 @@
       // Hash password
       if (this.isModified('password')) {
         const salt = await bcrypt.genSalt(10);
-
-        // Store old password before updating
+        const newHash = await bcrypt.hash(this.password, salt);
+        
+        // Store current password hash before replacing
         if (!this.passwordHistory) this.passwordHistory = [];
         this.passwordHistory.unshift({ hash: this.password, usedAt: new Date() });
-
-        // Limit to last 5 passwords
         this.passwordHistory = this.passwordHistory.slice(0, 5);
-
-        this.password = await bcrypt.hash(this.password, salt);
-      }
+      
+        this.password = newHash;
+      }      
 
       // Hash PIN (if modified)
       if (this.isModified('pin')) {

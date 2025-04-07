@@ -206,24 +206,38 @@ export default class AuthService {
   }
   
   static async generateTokens(user) {
+    // Check if user is a valid object
+    if (!user || !user._id) {
+      throw new Error('Invalid user object provided');
+    }
+  
     const payload = { userId: user._id, role: user.role };
-
+  
     const accessToken = jwt.sign(
       payload,
       process.env.JWT_SECRET,
       { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || '15m' }
     );
-
+  
     const refreshToken = jwt.sign(
       payload,
       process.env.REFRESH_TOKEN_SECRET,
       { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || '7d' }
     );
-
-    user.refreshToken = refreshToken;
-    user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await user.save();
-
+  
+    // Check if user is a mongoose document with save method
+    if (user.save && typeof user.save === 'function') {
+      user.refreshToken = refreshToken;
+      user.refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await user.save();
+    } else {
+      // If not a mongoose document, update it directly in the database
+      await User.findByIdAndUpdate(user._id, {
+        refreshToken: refreshToken,
+        refreshTokenExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      });
+    }
+    
     return { accessToken, refreshToken };
   }
 

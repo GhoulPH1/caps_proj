@@ -1,6 +1,6 @@
+import User from '../models/user.model.js'
 import AuthService from '../services/auth.service.js';
 import mongoose from 'mongoose';
-import User from '../models/user.model.js';
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 
@@ -155,34 +155,27 @@ export const updateCredentials = async (req, res) => {
 };
 
 export const validateCredentials = async (req, res) => {
+  console.log('Request Body:', req.body); // Log the request body
   const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({
+      success: false,
+      msg: 'Email and password are required'
+    });
+  }
 
   try {
     const result = await AuthService.authenticateUser(email, password);
-    
-    // Generate refresh token and access token
     const tokens = await AuthService.generateTokens(result.user);
-    
-    // Set refresh token in HTTP-only cookie
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
-    
     res.status(200).json({
       success: true,
       msg: 'Credentials verified',
       user: result.user,
-      token: tokens.accessToken // This is the access token
+      token: tokens.accessToken
     });
   } catch (error) {
-    try {
-      handleServiceError(res, error);
-    } catch (serverError) {
-      handleServerError(res, error, 'validateCredentials');
-    }
+    handleServiceError(res, error);
   }
 };
 
@@ -244,10 +237,21 @@ export const loginUser = async (req, res) => {
   const { email, password, pin } = req.body;
 
   try {
+    // The current AuthService.loginUser returns a sanitized user
     const result = await AuthService.loginUser(email, password, pin);
     
-    // Generate refresh token and access token
-    const tokens = await AuthService.generateTokens(result.user);
+    // Get the actual mongoose document from the database
+    const userDocument = await User.findById(result.user._id);
+    
+    if (!userDocument) {
+      return res.status(404).json({
+        success: false,
+        msg: 'User not found'
+      });
+    }
+    
+    // Generate refresh token and access token with the actual document
+    const tokens = await AuthService.generateTokens(userDocument);
     
     // Set refresh token in HTTP-only cookie
     res.cookie('refreshToken', tokens.refreshToken, {

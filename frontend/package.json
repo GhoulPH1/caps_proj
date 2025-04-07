@@ -21,6 +21,7 @@
     "@tailwindcss/vite": "^4.0.16",
     "axios": "^1.8.2",
     "framer-motion": "^12.6.2",
+    "lucide-react": "^0.487.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-error-boundary": "^5.0.0",

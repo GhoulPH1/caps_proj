@@ -1,7 +1,7 @@
 // auth.middleware.js - Updated version
 import jwt from 'jsonwebtoken';
 import User from '../models/user.model.js';
-import refreshAccessToken  from '../services/auth.service.js';
+import AuthService from '../services/auth.service.js';
 
 export const validateToken = async (req, res, next) => {
   try {
@@ -49,7 +49,7 @@ export const validateToken = async (req, res, next) => {
         
         try {
           // Try to get a new access token
-          const tokens = await refreshAccessToken(refreshToken);
+          const tokens = await AuthService.refreshAccessToken(refreshToken);
           
           // Find user
           const decoded = jwt.decode(tokens.accessToken);
@@ -128,7 +128,7 @@ export const preemptiveTokenRefresh = async (req, res, next) => {
       if (refreshToken) {
         try {
           // Get new tokens
-          const tokens = await refreshAccessToken(refreshToken);
+          const tokens = await AuthService.refreshAccessToken(refreshToken);
           
           // Send new tokens to client
           res.set('X-New-Access-Token', tokens.accessToken);
