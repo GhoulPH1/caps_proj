@@ -98,6 +98,12 @@
     timestamps: true
   });
 
+  // Add pre-validate hook to ensure validation runs on original password
+  userSchema.pre('validate', function(next) {
+    // Validation will run on the raw password before hashing
+    next();
+  });
+
   // 🔄 Pre-save hook for hashing password, PIN, and security answer
   userSchema.pre('save', async function(next) {
     try {
@@ -191,4 +197,4 @@
 
   const User = mongoose.model('User', userSchema);
 
-  export default User;
+  export default User;  

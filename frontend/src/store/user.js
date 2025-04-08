@@ -332,6 +332,26 @@ export const useUserStore = create((set, get) => {
       })();
     },
 
+    createUsers: async (userData) => withLoading(async () => {
+      try {
+        // Call the API to register a new user
+        const data = await apiRequest('user/register', {
+          method: 'POST',
+          body: JSON.stringify(userData)
+        });
+        
+        return {
+          success: true,
+          msg: data.msg || 'User registered successfully'
+        };
+      } catch (error) {
+        return {
+          success: false,
+          msg: error.message || 'Registration failed'
+        };
+      }
+    }),
+
     loginUser: async (credentials) => withLoading(async () => {
       if (!credentials.pin && !credentials.securityVerified) {
         if (!credentials.email || !credentials.password)

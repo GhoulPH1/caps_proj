@@ -10,6 +10,7 @@ import xss from 'xss-clean';
 import hpp from 'hpp';
 import compression from 'compression';
 
+
 // Import routes
 import userRoutes from './routes/user.route.js';
 import uploadRoutes from './routes/file.route.js';
@@ -36,7 +37,7 @@ app.use(helmet());
 
 // 2. CORS Configuration
 const corsOptions = {
-  origin: [process.env.FRONTEND_URL || 'http://localhost:5173', 'http://localhost:3000'],
+  origin: [process.env.FRONTEND_URL || 'https://localhost:5173', 'https://localhost:3000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
@@ -89,6 +90,14 @@ app.get('/', (req, res) => {
   });
 });
 
+app.use(helmet.contentSecurityPolicy({
+  directives: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "'unsafe-inline'"],
+    objectSrc: ["'none'"],
+  }
+}));
+
 // Routes
 app.use("/api/user", userRoutes);
 app.use('/api', uploadRoutes);
@@ -122,7 +131,7 @@ const startServer = async () => {
     console.log('📦 Database connected successfully');
     
     const server = app.listen(PORT, () => {
-      console.log(`🚀 Server running in ${NODE_ENV} mode on http://localhost:${PORT}`);
+      console.log(`🚀 Server running in ${NODE_ENV} mode on https://localhost:${PORT}`);
     });
 
     // Graceful shutdown handlers

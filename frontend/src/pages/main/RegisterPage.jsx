@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../../store/user.js';
 import useRegisterStore from '../../store/register.js';
@@ -6,6 +6,14 @@ import useRegisterStore from '../../store/register.js';
 const RegisterPage = () => {
   const navigate = useNavigate();
   const createUser = useUserStore(state => state.createUsers);
+  
+  // Password validation state
+  const [validations, setValidations] = useState({
+    length: false,
+    uppercase: false,
+    number: false,
+    special: false
+  });
   
   const {
     stage, 
@@ -21,6 +29,23 @@ const RegisterPage = () => {
     validateStage3,
     submitRegistration
   } = useRegisterStore();
+
+  // Check password validation on load and changes
+  useEffect(() => {
+    if (formData.password) {
+      checkPasswordStrength(formData.password);
+    }
+  }, [formData.password]);
+
+  // Check password strength
+  const checkPasswordStrength = (password) => {
+    setValidations({
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      number: /\d/.test(password),
+      special: /[\W_]/.test(password)
+    });
+  };
 
   // Generate date options
   const currentYear = new Date().getFullYear();
@@ -251,6 +276,29 @@ const RegisterPage = () => {
           onChange={handleChange}
           className="bg-gray-800 border border-gray-700 rounded w-full py-2 px-3 text-white focus:outline-none focus:border-gray-500"
         />
+        
+        {/* Password requirements checklist */}
+        <div className="mt-2 text-sm bg-gray-800 border border-gray-700 rounded p-3">
+          <p className="text-gray-300 mb-2">Password requirements:</p>
+          <ul className="space-y-1">
+            <li className={`flex items-center ${validations.length ? 'text-green-500' : 'text-gray-400'}`}>
+              <span className="mr-2">{validations.length ? '✓' : '○'}</span>
+              At least 8 characters
+            </li>
+            <li className={`flex items-center ${validations.uppercase ? 'text-green-500' : 'text-gray-400'}`}>
+              <span className="mr-2">{validations.uppercase ? '✓' : '○'}</span>
+              At least one uppercase letter
+            </li>
+            <li className={`flex items-center ${validations.number ? 'text-green-500' : 'text-gray-400'}`}>
+              <span className="mr-2">{validations.number ? '✓' : '○'}</span>
+              At least one number
+            </li>
+            <li className={`flex items-center ${validations.special ? 'text-green-500' : 'text-gray-400'}`}>
+              <span className="mr-2">{validations.special ? '✓' : '○'}</span>
+              At least one special character
+            </li>
+          </ul>
+        </div>
       </div>
       
       <div>
@@ -262,6 +310,11 @@ const RegisterPage = () => {
           onChange={handleChange}
           className="bg-gray-800 border border-gray-700 rounded w-full py-2 px-3 text-white focus:outline-none focus:border-gray-500"
         />
+        {formData.password && formData.confirmPassword && (
+          <p className={`text-sm mt-1 ${formData.password === formData.confirmPassword ? 'text-green-500' : 'text-red-500'}`}>
+            {formData.password === formData.confirmPassword ? '✓ Passwords match' : '× Passwords do not match'}
+          </p>
+        )}
       </div>
       
       <div className="flex items-center mb-4">

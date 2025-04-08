@@ -46,9 +46,23 @@ const useRegisterStore = create((set, get) => {
       if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(formData.email))
         return setError('Please enter a valid email address');
       
+      // Password length validation
       if (formData.password.length < 8)
         return setError('Password must be at least 8 characters');
       
+      // Check for uppercase letter
+      if (!/[A-Z]/.test(formData.password))
+        return setError('Password must contain at least one uppercase letter');
+      
+      // Check for number
+      if (!/\d/.test(formData.password))
+        return setError('Password must contain at least one number');
+      
+      // Check for special character
+      if (!/[\W_]/.test(formData.password))
+        return setError('Password must contain at least one special character');
+      
+      // Confirm password match
       if (formData.password !== formData.confirmPassword)
         return setError('Passwords do not match');
       
