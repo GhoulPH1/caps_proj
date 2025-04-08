@@ -1,6 +1,7 @@
 // tokenHandler.js
 export class TokenHandler {
-    static TOKEN_KEY = 'auth_token';
+  static REFRESH_EVENT = 'token_refresh_required';
+  static TOKEN_KEY = 'auth_token';
     
     static getToken() {
       return localStorage.getItem(this.TOKEN_KEY);
@@ -19,6 +20,21 @@ export class TokenHandler {
     static getAuthHeader() {
       const token = this.getToken();
       return token ? { 'Authorization': `Bearer ${token}` } : {};
+    }
+
+    static isTokenExpired(token) {
+      if (!token) return true;
+      
+      try {
+        // Decode JWT payload
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        
+        // Check if token is expired
+        return payload.exp * 1000 < Date.now();
+      } catch (error) {
+        console.error('Error checking token expiration:', error);
+        return true;
+      }
     }
     
     static setupInterceptors(axios) {

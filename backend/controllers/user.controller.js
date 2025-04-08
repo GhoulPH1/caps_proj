@@ -313,21 +313,26 @@ export const configurePassport = () => {
 
 export const getUserSession = async (req, res) => {
   try {
-    // req.user is already populated by the validateToken middleware
+    // User should be attached to req by the validateToken middleware
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        msg: 'Invalid or expired session'
+        msg: 'Not authenticated'
       });
     }
-
-    // Return the user data
-    res.status(200).json({
+    
+    // Return user data without sensitive fields
+    return res.status(200).json({
       success: true,
-      user: req.user
+      user: req.user,
+      authenticationComplete: true
     });
   } catch (error) {
-    handleServerError(res, error, 'getUserSession');
+    console.error('Error getting user session:', error);
+    res.status(500).json({
+      success: false,
+      msg: 'Server error getting user session'
+    });
   }
 };
 

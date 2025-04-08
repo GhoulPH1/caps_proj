@@ -489,5 +489,24 @@
     "merkleRoot": "4ea5c508a6566e76240543f8feb06fd457777be39549c4016436afda65d2330e",
     "hash": "003c1dd79ca875dfb5d89eabea24567b78a041b990b9b8cfeb820191ba915f0d",
     "nonce": 277
+  },
+  {
+    "index": 38,
+    "timestamp": "2025-04-08T07:02:12.323Z",
+    "transactions": [
+      {
+        "cid": "356266e007fd300b5350c6aa81864276c0748856c0535e2482669fef734e53cd",
+        "userId": "67f1db41930177bf383e5aff",
+        "fileName": "12.txt",
+        "fileSize": 2,
+        "fileHash": "6b51d431df5d7f141cbececcf79edf3dd861c3b4069f0b11661a3eefacbba918",
+        "operation": "UPLOAD",
+        "timestamp": 1744095732323
+      }
+    ],
+    "previousHash": "003c1dd79ca875dfb5d89eabea24567b78a041b990b9b8cfeb820191ba915f0d",
+    "merkleRoot": "4ea5c508a6566e76240543f8feb06fd457777be39549c4016436afda65d2330e",
+    "hash": "00b1e2a8ebacb7f331572c14de40e2f92714fa06c7efbc3d2b53df6d86deb647",
+    "nonce": 48
   }
 ]
