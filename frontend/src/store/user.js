@@ -1,26 +1,31 @@
 import { create } from 'zustand';
 import axios from 'axios';
 import { TokenHandler } from '../services/token.handler';
+import PinValidationService from '../components/service/PinValidationService';
 
-// Initialize the token refresh system
+// Initialize token refresh system
 TokenHandler.setupInterceptors(axios);
 
+// Constants for validation
+const REGEX = {
+  EMAIL: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+  PASSWORD: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+  PIN: /^\d{4}$/
+};
+
 export const useUserStore = create((set, get) => {
-  // Helper functions - Moved outside of returned object for better memory usage
+  // Core API helper function
   const apiRequest = async (endpoint, options = {}) => {
-    const headers = { 
-      'Content-Type': 'application/json',
-      ...TokenHandler.getAuthHeader(),
-      ...options.headers 
-    };
-    
     const res = await fetch(`/api/${endpoint}`, {
-      headers,
+      headers: { 
+        'Content-Type': 'application/json',
+        ...TokenHandler.getAuthHeader(),
+        ...options.headers 
+      },
       credentials: 'include',
       ...options
     });
     
-    // Handle token refresh
     const newToken = res.headers.get('x-new-access-token');
     if (newToken) TokenHandler.setToken(newToken);
     
@@ -33,7 +38,28 @@ export const useUserStore = create((set, get) => {
     return data;
   };
 
-  const withLoading = async (fn) => {
+  // Validator functions
+  const validators = {
+    email: email => {
+      if (!email || email.length > 100) throw new Error(email ? 'Email is too long' : 'Email is required');
+      if (!REGEX.EMAIL.test(email)) throw new Error('Please enter a valid email address');
+      return true;
+    },
+    password: password => {
+      if (!password) throw new Error('Password is required');
+      if (password.length < 8) throw new Error('Password must be at least 8 characters long');
+      if (!REGEX.PASSWORD.test(password))
+        throw new Error('Password must include uppercase, lowercase, number, and special character');
+      return true;
+    },
+    pin: pin => {
+      if (!REGEX.PIN.test(pin)) throw new Error('PIN must be exactly 4 digits');
+      return true;
+    }
+  };
+
+  // Loading wrapper
+  const withLoading = async fn => {
     set({ isLoading: true, error: null });
     try {
       return await fn();
@@ -46,43 +72,16 @@ export const useUserStore = create((set, get) => {
     }
   };
 
-  // Validators - Using constant regex objects to avoid recompilation
-  const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-  const PIN_REGEX = /^\d{4}$/;
-  
-  const validators = {
-    email: (email) => {
-      if (!email || email.length > 100) throw new Error(email ? 'Email is too long' : 'Email is required');
-      if (!EMAIL_REGEX.test(email)) throw new Error('Please enter a valid email address');
-      return true;
-    },
-    password: (password) => {
-      if (!password) throw new Error('Password is required');
-      if (password.length < 8) throw new Error('Password must be at least 8 characters long');
-      if (!PASSWORD_REGEX.test(password))
-        throw new Error('Password must include uppercase, lowercase, number, and special character');
-      return true;
-    },
-    pin: (pin) => {
-      if (!PIN_REGEX.test(pin)) throw new Error('PIN must be exactly 4 digits');
-      return true;
-    }
-  };
-
-  // Internal store methods
-  const handleTokenFromResponse = (data) => {
-    if (data?.token) TokenHandler.setToken(data.token);
+  // Helper methods
+  const handleTokenFromResponse = (data, shouldSetToken = true) => {
+    if (data?.token && shouldSetToken) TokenHandler.setToken(data.token);
   };
   
-  const startCooldownTimer = (seconds) => {
-    set(state => ({ 
-      pinCooldownTime: seconds, 
-      cooldownCount: state.cooldownCount + 1 
-    }));
+  const startCooldownTimer = seconds => {
+    set(state => ({ pinCooldownTime: seconds, cooldownCount: state.cooldownCount + 1 }));
     
     const timer = setInterval(() => {
-      set((state) => {
+      set(state => {
         if (state.pinCooldownTime <= 1) {
           clearInterval(timer);
           return { pinCooldownTime: null, pinAttemptsLeft: 3 };
@@ -92,8 +91,29 @@ export const useUserStore = create((set, get) => {
     }, 1000);
   };
 
+  // Reset state helpers
+  const resetAuthState = (includeUser = true) => set({
+    ...(includeUser ? { currentUser: null } : {}),
+    pinVerificationRequired: false,
+    userId: null,
+    error: null,
+    showSecurityQuestion: false,
+    securityPhrase: '',
+    pinAttemptsLeft: 3,
+    pinCooldownTime: null,
+    cooldownCount: 0,
+    authenticationComplete: false,
+    showLoginPopup: false
+  });
+
+  // State getters
+  const getAuthStatus = () => {
+    const { currentUser, authenticationComplete } = get();
+    return { isAuthenticated: !!(currentUser && authenticationComplete), currentUser, authenticationComplete };
+  };
+
   return {
-    // State
+    // Core state
     users: [],
     currentUser: null,
     isLoading: false,
@@ -106,46 +126,33 @@ export const useUserStore = create((set, get) => {
     cooldownCount: 1,
     showSecurityQuestion: false,
     securityPhrase: '',
+    authenticationComplete: false,
     
-    // Setters - consolidated for less code
-    setUsers: (users) => set({ users }),
-    setCurrentUser: (user) => set({ currentUser: user }),
-    setLoading: (isLoading) => set({ isLoading }),
-    setShowLoginPopup: (showLoginPopup) => set({ showLoginPopup }),
+    // Simple setters
+    setUsers: users => set({ users }),
+    setCurrentUser: user => set({ currentUser: user }),
+    setLoading: isLoading => set({ isLoading }),
+    setShowLoginPopup: showLoginPopup => set({ showLoginPopup }),
     setPinVerificationRequired: (required, userId = null) => set({ pinVerificationRequired: required, userId }),
-    setError: (error) => {
+    setError: error => {
       set({ error });
       if (error) setTimeout(() => set({ error: null }), 5000);
     },
     
-    // Auth state management
-    resetPinState: () => set({
-      pinVerificationRequired: false,
-      userId: null,
-      error: null,
-      showSecurityQuestion: false,
-      securityPhrase: '',
-      pinAttemptsLeft: 3,
-      pinCooldownTime: null,
-      cooldownCount: 0
-    }),
-    
-    // Use the extracted function
+    // Reset states
+    resetPinState: () => resetAuthState(false),
     startPinCooldown: startCooldownTimer,
     
-    // Auth helpers
+    // Auth status helpers
     checkAuthentication: () => {
-      const { currentUser } = get();
-      if (!currentUser) {
-        set({ showLoginPopup: true });
-        return false;
-      }
-      return true;
+      const { isAuthenticated } = getAuthStatus();
+      if (!isAuthenticated) set({ showLoginPopup: true });
+      return isAuthenticated;
     },
     
     authenticatedNavigation: (navigate, path) => {
-      const { currentUser } = get();
-      if (currentUser) {
+      const { isAuthenticated } = getAuthStatus();
+      if (isAuthenticated) {
         navigate(path);
         return true;
       }
@@ -158,7 +165,7 @@ export const useUserStore = create((set, get) => {
     validatePassword: validators.password,
     validatePinFormat: validators.pin,
     
-    // Auth flow methods - Streamlined for better alignment
+    // Auth flow methods
     validateCredentials: async (email, password) => withLoading(async () => {
       validators.email(email);
       validators.password(password);
@@ -168,8 +175,14 @@ export const useUserStore = create((set, get) => {
         body: JSON.stringify({ email, password })
       });
       
-      handleTokenFromResponse(data);
-      set({ pinVerificationRequired: true, userId: data.userId || data.user?._id });
+      handleTokenFromResponse(data, false);
+      
+      set({ 
+        pinVerificationRequired: true, 
+        userId: data.userId || data.user?._id,
+        authenticationComplete: false
+      });
+      
       return data;
     }),
     
@@ -183,38 +196,40 @@ export const useUserStore = create((set, get) => {
         throw new Error(`Too many incorrect attempts. Try again in ${self.pinCooldownTime} seconds.`);
       
       try {
-        const data = await apiRequest('user/validate-pin', {
-          method: 'POST',
-          body: JSON.stringify({ userId, pin })
-        });
+        const data = await PinValidationService.validatePin(userId, pin);
         
         handleTokenFromResponse(data);
+        
         set({ 
           pinVerificationRequired: false, 
           pinAttemptsLeft: 3,
           cooldownCount: 0,
-          userId: null 
+          userId: null,
+          authenticationComplete: true
         });
         
         return data;
       } catch (error) {
-        // Handle specific error cases
         if (error.message.includes('requireSecurityQuestion')) {
           await self.fetchSecurityPhrase(userId);
           set({ showSecurityQuestion: true });
           return { success: false, requireSecurityQuestion: true };
         }
         
-        // Track attempts
-        const attemptsLeft = Math.max(0, self.pinAttemptsLeft - 1);
-        set({ pinAttemptsLeft: attemptsLeft });
-        
-        // Start cooldown if needed
-        if (attemptsLeft === 0) {
-          const seconds = error.message.includes('Try again in') 
-            ? parseInt(error.message.match(/\d+/)[0]) || 30 
-            : 30;
-          startCooldownTimer(seconds);
+        // Handle cooldown and attempts
+        if (error.cooldownTime) {
+          startCooldownTimer(error.cooldownTime);
+          set({ pinAttemptsLeft: 0 });
+        } else {
+          const attemptsLeft = Math.max(0, self.pinAttemptsLeft - 1);
+          set({ pinAttemptsLeft: attemptsLeft });
+          
+          if (attemptsLeft === 0) {
+            const seconds = error.message.includes('Try again in') 
+              ? parseInt(error.message.match(/\d+/)[0]) || 30 
+              : 30;
+            startCooldownTimer(seconds);
+          }
         }
         
         throw error;
@@ -222,7 +237,7 @@ export const useUserStore = create((set, get) => {
     }),
     
     fetchSecurityPhrase: async (userId) => withLoading(async () => {
-      const data = await apiRequest(`user/security-phrase/${userId}`);
+      const data = await PinValidationService.getSecurityQuestion(userId);
       set({ securityPhrase: data.securityPhrase || "What was your first pet's name?" });
       return data;
     }),
@@ -233,81 +248,123 @@ export const useUserStore = create((set, get) => {
       const userId = get().userId;
       if (!userId) throw new Error('User identification is missing');
       
-      const data = await apiRequest('user/verify-security-question', {
-        method: 'POST',
-        body: JSON.stringify({ userId, securityAnswer })
-      });
+      const data = await PinValidationService.verifySecurityQuestion(userId, securityAnswer);
       
       handleTokenFromResponse(data);
+      
       set({ 
         showSecurityQuestion: false,
         pinVerificationRequired: false,
         pinAttemptsLeft: 3,
         cooldownCount: 0,
-        userId: null
+        userId: null,
+        authenticationComplete: true
       });
       
       return data;
     }),
     
-    // Streamlined login flow that manages all steps
-    loginUser: async (credentials) => withLoading(async () => {
-      const self = get();
+    resetPin: async (newPin, securityAnswer) => withLoading(async () => {
+      const userId = get().userId;
+      if (!userId) throw new Error('User identification is missing');
       
-      // Step 1: If no PIN yet, validate credentials first
-      if (!credentials.pin) {
-        try {
-          // Validate inputs
-          if (!credentials.email || !credentials.password) {
-            throw new Error('Email and password are required');
-          }
-          
-          // Validate credentials
-          const credentialsResult = await self.validateCredentials(credentials.email, credentials.password);
-          handleTokenFromResponse(credentialsResult);
-          
-          // Return early, requiring PIN input
-          return { 
-            success: true, 
-            requirePin: true, 
-            userId: credentialsResult.userId || credentialsResult.user?._id
-          };
-        } catch (error) {
-          // Let errors propagate up
-          throw error;
-        }
+      validators.pin(newPin);
+      if (!securityAnswer?.trim()) throw new Error('Security answer is required');
+      
+      const data = await PinValidationService.resetPin(userId, newPin, securityAnswer);
+      
+      set({
+        showSecurityQuestion: false,
+        pinVerificationRequired: false,
+        pinAttemptsLeft: 3,
+        cooldownCount: 0
+      });
+      
+      return data;
+    }),
+    
+    checkPinStatus: async (userId) => withLoading(async () => {
+      if (!userId) throw new Error('User identification is missing');
+      
+      const data = await PinValidationService.checkPinLockoutStatus(userId);
+      
+      if (data.isLocked && data.cooldownTime) {
+        startCooldownTimer(data.cooldownTime);
       }
       
-      // Step 2: If PIN is provided, validate it
-      if (credentials.pin) {
-        try {
-          validators.pin(credentials.pin);
-          const pinResult = await self.validatePin(credentials.pin, credentials.userId);
-          
-          // If security question is required
-          if (pinResult.requireSecurityQuestion) {
-            return { success: false, requireSecurityQuestion: true };
-          }
-          
-          // Complete login with API
-          const data = await apiRequest('user/login', {
-            method: 'POST',
-            body: JSON.stringify(credentials)
-          });
-          
-          handleTokenFromResponse(data);
-          set({
-            currentUser: data.user,
-            showLoginPopup: false,
-            pinVerificationRequired: false,
-            userId: null
-          });
-          
-          return { success: true, msg: "Login Successful" };
-        } catch (error) {
-          // Let PIN validation errors propagate
-          throw error;
+      set({
+        pinAttemptsLeft: data.attemptsLeft || 3,
+        showSecurityQuestion: data.requiresSecurityQuestion || false
+      });
+      
+      return data;
+    }),
+    
+    // Combined login flow
+    loginUser: async (credentials) => withLoading(async () => {
+      // Step 1: Credential validation only
+      if (!credentials.pin && !credentials.securityVerified) {
+        if (!credentials.email || !credentials.password) {
+          throw new Error('Email and password are required');
         }
+        
+        const credentialsResult = await get().validateCredentials(credentials.email, credentials.password);
+        
+        return { 
+          success: true, 
+          requirePin: true, 
+          userId: credentialsResult.userId || credentialsResult.user?._id
+        };
+      }
+      
+      // Step 2: PIN validation
+      if (credentials.pin) {
+        validators.pin(credentials.pin);
+        const pinResult = await get().validatePin(credentials.pin, credentials.userId);
+        
+        if (pinResult.requireSecurityQuestion) {
+          return { success: false, requireSecurityQuestion: true };
+        }
+        
+        const data = await apiRequest('user/login', {
+          method: 'POST',
+          body: JSON.stringify(credentials)
+        });
+        
+        handleTokenFromResponse(data);
+        
+        set({
+          currentUser: data.user,
+          showLoginPopup: false,
+          pinVerificationRequired: false,
+          userId: null,
+          authenticationComplete: true
+        });
+        
+        return { success: true, msg: "Login Successful" };
+      }
+      
+      // Step 3: Security validation path
+      if (credentials.securityVerified) {
+        const data = await apiRequest('user/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...credentials,
+            securityVerified: true
+          })
+        });
+        
+        handleTokenFromResponse(data);
+        
+        set({
+          currentUser: data.user,
+          showLoginPopup: false,
+          pinVerificationRequired: false,
+          userId: null,
+          authenticationComplete: true
+        });
+        
+        return { success: true, msg: "Login Successful" };
       }
     }),
     
@@ -315,20 +372,20 @@ export const useUserStore = create((set, get) => {
       const userId = get().userId;
       if (!userId) throw new Error('Session expired, please login again');
       
-      // Fetch user data
-      const userData = await apiRequest(`user/${userId}`);
-      
-      // Generate token
-      const tokenData = await apiRequest('user/generate-token', {
-        method: 'POST',
-        body: JSON.stringify({ 
-          userId,
-          email: additionalData.email,
-          password: additionalData.password 
+      const [userData, tokenData] = await Promise.all([
+        apiRequest(`user/${userId}`),
+        apiRequest('user/generate-token', {
+          method: 'POST',
+          body: JSON.stringify({ 
+            userId,
+            email: additionalData.email,
+            password: additionalData.password 
+          })
         })
-      });
+      ]);
       
       handleTokenFromResponse(tokenData);
+      
       set({
         currentUser: userData.user,
         showLoginPopup: false,
@@ -336,7 +393,8 @@ export const useUserStore = create((set, get) => {
         showSecurityQuestion: false,
         userId: null,
         pinAttemptsLeft: 3,
-        cooldownCount: 0
+        cooldownCount: 0,
+        authenticationComplete: true
       });
       
       return { success: true, msg: "Login Successful" };
@@ -349,12 +407,18 @@ export const useUserStore = create((set, get) => {
       return withLoading(async () => {
         try {
           const data = await apiRequest('user/session');
-          set({ currentUser: data.user });
-          return { success: true };
+          const isCompleteAuth = data.authenticationComplete !== false;
+          
+          set({ 
+            currentUser: data.user,
+            authenticationComplete: isCompleteAuth
+          });
+          
+          return { success: true, authenticationComplete: isCompleteAuth };
         } catch (error) {
           if (error.status === 401) {
             TokenHandler.clearToken();
-            set({ currentUser: null });
+            resetAuthState();
           }
           return { success: false, msg: error.message };
         }
@@ -369,7 +433,7 @@ export const useUserStore = create((set, get) => {
       }
       
       TokenHandler.clearToken();
-      set({ currentUser: null });
+      resetAuthState();
       
       return { success: true, msg: "Logout Successful" };
     })

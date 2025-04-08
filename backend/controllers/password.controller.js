@@ -1,14 +1,58 @@
 // controllers/password.controller.js
 import User from '../models/user.model.js';
 import bcrypt from 'bcrypt';
+import AuthService from '../services/auth.service.js';
+import mongoose from 'mongoose';
 
 // Configuration constants
-const PASSWORD_RESET_CONFIG = {
-  MAX_PASSWORD_HISTORY: 5, // Number of previous passwords to remember
+const PASSWORD_CONFIG = {
+  MAX_PASSWORD_HISTORY: 5,
   MIN_PASSWORD_LENGTH: 8,
-  PASSWORD_COMPLEXITY_REGEX: /^(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/
+  COMPLEXITY_REGEX: /^(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/
 };
 
+// Utility functions
+const validateId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
+const handleServiceError = (res, error) => {
+  // Handle validation errors
+  if (error.name === 'ValidationError') {
+    const messages = Object.values(error.errors).map(val => val.message);
+    return res.status(400).json({ 
+      success: false, 
+      msg: messages.join(', ')
+    });
+  }
+  
+  // Handle duplicate key errors
+  if (error.code === 11000) {
+    return res.status(400).json({ 
+      success: false, 
+      msg: "Email already exists"
+    });
+  }
+
+  // Handle standard errors with known messages
+  return res.status(400).json({ 
+    success: false, 
+    msg: error.message || "An error occurred"
+  });
+};
+
+const handleServerError = (res, error, operation) => {
+  console.error(`Error in ${operation}:`, error);
+  return res.status(500).json({ 
+    success: false, 
+    msg: "Server error", 
+    error: error.message || "Unknown error"
+  });
+};
+
+/**
+ * Resets a user's password after validating PIN and old password
+ */
 export const resetPassword = async (req, res) => {
   const { email, pin, oldPassword, newPassword } = req.body;
 
@@ -18,14 +62,6 @@ export const resetPassword = async (req, res) => {
       return res.status(400).json({
         success: false,
         msg: 'All fields are required'
-      });
-    }
-
-    // PIN validation (should be exactly 4 digits)
-    if (!/^\d{4}$/.test(pin)) {
-      return res.status(400).json({
-        success: false,
-        msg: 'PIN must be exactly 4 digits'
       });
     }
 
@@ -40,32 +76,18 @@ export const resetPassword = async (req, res) => {
 
     // Check if user is currently locked out
     if (user.lockoutUntil && user.lockoutUntil > Date.now()) {
+      const remainingSeconds = Math.ceil((user.lockoutUntil - Date.now()) / 1000);
       return res.status(403).json({
         success: false,
-        msg: 'Account temporarily locked. Try again later.'
+        msg: `Account temporarily locked. Try again in ${remainingSeconds} seconds.`,
+        cooldownTime: remainingSeconds
       });
     }
 
-    // Step 1: Verify PIN
+    // Step 1: Verify PIN first
     const isPinCorrect = await user.comparePin(pin);
     if (!isPinCorrect) {
-      // Increment PIN attempts
-      user.pinAttempts = (user.pinAttempts || 0) + 1;
-      
-      // Check if user has exceeded max attempts
-      if (user.pinAttempts >= 3) {
-        user.pinAttempts = 0;
-        user.cooldowns = (user.cooldowns || 0) + 1;
-        user.lockoutUntil = Date.now() + (30 * 1000); // 30 seconds lockout
-        await user.save();
-        
-        return res.status(403).json({
-          success: false,
-          msg: 'Too many incorrect attempts. Account temporarily locked.'
-        });
-      }
-      
-      await user.save();
+      // This now belongs to PIN controller but we need basic validation here
       return res.status(401).json({
         success: false,
         msg: 'Invalid PIN'
@@ -82,8 +104,7 @@ export const resetPassword = async (req, res) => {
     }
 
     // Step 3: Validate new password
-    // Check if new password meets complexity requirements
-    if (!PASSWORD_RESET_CONFIG.PASSWORD_COMPLEXITY_REGEX.test(newPassword)) {
+    if (!PASSWORD_CONFIG.COMPLEXITY_REGEX.test(newPassword)) {
       return res.status(400).json({
         success: false,
         msg: 'Password must have at least 8 characters, one uppercase letter, one number, and one special character'
@@ -110,12 +131,9 @@ export const resetPassword = async (req, res) => {
     // Set the new password (the pre-save hook will handle hashing)
     user.password = newPassword;
     
-    // Reset security counters
-    user.pinAttempts = 0;
-    user.cooldowns = 0;
+    // Reset security counters related to password
     user.lockoutUntil = null;
     
-    // Save the user with updated password
     await user.save();
 
     res.status(200).json({
@@ -124,15 +142,13 @@ export const resetPassword = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Password Reset Error:', error);
-    res.status(500).json({
-      success: false,
-      msg: 'Server error',
-      error: error.message
-    });
+    handleServerError(res, error, 'resetPassword');
   }
 };
 
+/**
+ * Requests a password reset email to be sent to user
+ */
 export const requestPasswordResetEmail = async (req, res) => {
   const { email } = req.body;
 
@@ -144,33 +160,128 @@ export const requestPasswordResetEmail = async (req, res) => {
       });
     }
 
-    // Check if user exists
+    // Check if user exists but don't reveal in response
     const user = await User.findOne({ email });
-    if (!user) {
-      // For security reasons, don't reveal that the user doesn't exist
-      return res.status(200).json({
-        success: true,
-        msg: 'If your email is registered, you will receive reset instructions'
-      });
-    }
-
-    // In a real implementation, you would:
-    // 1. Generate a reset token
-    // 2. Save it to the user document with an expiration
-    // 3. Send an email with a link containing the token
-
-    // For this example, we'll just return a success message
+    
+    // Always return the same response whether user exists or not (security best practice)
     res.status(200).json({
       success: true,
-      msg: 'Reset instructions sent to your email'
+      msg: 'If your email is registered, you will receive reset instructions'
     });
 
+    // Only send email if user exists (outside of response)
+    if (user) {
+      // TODO: Implement actual email sending functionality
+      // This would involve:
+      // 1. Generate a reset token
+      // 2. Save it to the user document with an expiration
+      // 3. Send an email with a link containing the token
+    }
+
   } catch (error) {
-    console.error('Password Reset Request Error:', error);
-    res.status(500).json({
-      success: false,
-      msg: 'Server error',
-      error: error.message
+    handleServerError(res, error, 'requestPasswordResetEmail');
+  }
+};
+
+/**
+ * Updates user credentials (username, email, etc.)
+ */
+export const updateCredentials = async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+
+  try {
+    // Check if the ID format is valid
+    if (!validateId(id)) {
+      return res.status(400).json({ success: false, msg: "Invalid User ID format" });
+    }
+
+    const updatedUser = await AuthService.updateUserCredentials(id, updates);
+    res.status(200).json({ success: true, data: updatedUser });
+
+  } catch (error) {
+    try {
+      handleServiceError(res, error);
+    } catch (serverError) {
+      handleServerError(res, error, 'updateCredentials');
+    }
+  }
+};
+
+/**
+ * Change password (when user is already logged in)
+ */
+export const changePassword = async (req, res) => {
+  const { userId, currentPassword, newPassword } = req.body;
+  
+  try {
+    // Validate input
+    if (!userId || !validateId(userId)) {
+      return res.status(400).json({
+        success: false,
+        msg: 'Valid user ID is required'
+      });
+    }
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        msg: 'Current password and new password are required'
+      });
+    }
+    
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        msg: 'User not found'
+      });
+    }
+    
+    // Verify current password
+    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+    if (!isCurrentPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        msg: 'Current password is incorrect'
+      });
+    }
+    
+    // Validate new password complexity
+    if (!PASSWORD_CONFIG.COMPLEXITY_REGEX.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        msg: 'Password must have at least 8 characters, one uppercase letter, one number, and one special character'
+      });
+    }
+    
+    // Check if new password is same as current password
+    if (await bcrypt.compare(newPassword, user.password)) {
+      return res.status(400).json({
+        success: false,
+        msg: 'New password cannot be the same as current password'
+      });
+    }
+    
+    // Check password history
+    const isPasswordUnique = await user.isPasswordUnique(newPassword);
+    if (!isPasswordUnique) {
+      return res.status(400).json({
+        success: false,
+        msg: 'Password has been used recently. Please choose a different password.'
+      });
+    }
+    
+    // Update password
+    user.password = newPassword;
+    await user.save();
+    
+    res.status(200).json({
+      success: true,
+      msg: 'Password changed successfully'
     });
+  } catch (error) {
+    handleServerError(res, error, 'changePassword');
   }
 };

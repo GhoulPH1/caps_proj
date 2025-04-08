@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 // Configuration constants
 export const AUTH_CONFIG = {
   ATTEMPT_LIMIT: 3,
-  COOLDOWN_TIME: 30 * 1000, // 30 seconds
+  COOLDOWN_TIME: 60 * 1000, // 60 seconds (matching the PIN controller)
   MAX_COOLDOWNS: 2,
   JWT_EXPIRATION: '1h'
 };
@@ -79,7 +79,8 @@ export default class AuthService {
 
     // Check if user is currently locked out
     if (user.lockoutUntil && user.lockoutUntil > Date.now()) {
-      throw new Error('Too many attempts. Try again later.');
+      const remainingSeconds = Math.ceil((user.lockoutUntil - Date.now()) / 1000);
+      throw new Error(`Too many incorrect attempts. Try again in ${remainingSeconds} seconds.`);
     }
 
     // Use the comparePin method from the user model
@@ -91,9 +92,9 @@ export default class AuthService {
       if (user.pinAttempts >= AUTH_CONFIG.ATTEMPT_LIMIT) {
         user.pinAttempts = 0;
         user.cooldowns = (user.cooldowns || 0) + 1;
-        user.lockoutUntil = Date.now() + AUTH_CONFIG.COOLDOWN_TIME;
+        user.lockoutUntil = new Date(Date.now() + AUTH_CONFIG.COOLDOWN_TIME);
         await user.save();
-        throw new Error('Too many incorrect attempts. Try again in 30 seconds.');
+        throw new Error(`Too many incorrect attempts. Try again in ${AUTH_CONFIG.COOLDOWN_TIME / 1000} seconds.`);
       }
 
       await user.save();
@@ -117,6 +118,14 @@ export default class AuthService {
   }
 
   static async verifySecurityQuestion(userId, securityAnswer) {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    if (!securityAnswer) {
+      throw new Error('Security answer is required');
+    }
+
     const user = await User.findById(userId);
     if (!user) {
       throw new Error('User not found');
@@ -154,7 +163,7 @@ export default class AuthService {
         if (!/^\d{4}$/.test(value)) {
           throw new Error("PIN must be exactly 4 digits");
         }
-        if (await bcrypt.compare(value, existingUser.pin)) {
+        if (existingUser.pin && await bcrypt.compare(value, existingUser.pin)) {
           throw new Error("New PIN cannot be the same as the current PIN");
         }
         return value;
@@ -162,6 +171,12 @@ export default class AuthService {
       securityPhrase: (value) => {
         if (value.trim().length < 10) {
           throw new Error("Security phrase must be at least 10 characters long");
+        }
+        return value;
+      },
+      securityAnswer: (value) => {
+        if (!value || value.trim().length === 0) {
+          throw new Error("Security answer cannot be empty");
         }
         return value;
       }
@@ -181,6 +196,71 @@ export default class AuthService {
     });
 
     return this.sanitizeUser(updatedUser);
+  }
+
+  static async resetPin(userId, newPin, securityAnswer) {
+    // Validate inputs
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+    
+    if (!newPin || !/^\d{4}$/.test(newPin)) {
+      throw new Error('New PIN must be exactly 4 digits');
+    }
+    
+    if (!securityAnswer) {
+      throw new Error('Security answer is required');
+    }
+    
+    // First verify security answer
+    const securityResult = await this.verifySecurityQuestion(userId, securityAnswer);
+    
+    if (!securityResult.canProceed) {
+      throw new Error('Invalid security answer');
+    }
+    
+    // Update the PIN
+    await this.updateUserCredentials(userId, { pin: newPin });
+    
+    // Reset lockout status
+    await User.findByIdAndUpdate(userId, {
+      pinAttempts: 0,
+      cooldowns: 0,
+      lockoutUntil: null
+    });
+    
+    return { success: true };
+  }
+
+  static async getPinStatus(userId) {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    // Check if account is locked
+    if (user.lockoutUntil && user.lockoutUntil > new Date()) {
+      // Calculate remaining cooldown time
+      const remainingSeconds = Math.ceil((user.lockoutUntil - new Date()) / 1000);
+      return {
+        isLocked: true,
+        cooldownTime: remainingSeconds,
+        attemptsLeft: 0,
+        requiresSecurityQuestion: user.cooldowns >= AUTH_CONFIG.MAX_COOLDOWNS
+      };
+    }
+    
+    // Return current status
+    return {
+      isLocked: false,
+      attemptsLeft: AUTH_CONFIG.ATTEMPT_LIMIT - (user.pinAttempts || 0),
+      cooldownTime: null,
+      requiresSecurityQuestion: user.cooldowns >= AUTH_CONFIG.MAX_COOLDOWNS
+    };
   }
 
   static async loginUser(email, password, pin) {

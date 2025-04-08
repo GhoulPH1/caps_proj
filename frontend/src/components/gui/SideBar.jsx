@@ -1,5 +1,7 @@
-import React from 'react';
-import { SignalCellularAlt, Security, Folder } from '@mui/icons-material';
+import React, { lazy } from 'react';
+const SignalCellularAlt = lazy(() => import('@mui/icons-material/SignalCellularAlt'));
+const Security = lazy(() => import('@mui/icons-material/Security'));
+const Folder = lazy(() => import('@mui/icons-material/Folder'));
 
 const SideBar = () => {
   return (

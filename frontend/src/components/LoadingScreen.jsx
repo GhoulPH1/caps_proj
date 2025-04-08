@@ -24,6 +24,7 @@ const LoadingScreen = () => {
         {/* Animated Logo */}
         <motion.img
           src={logo}
+          loading="lazy"
           alt="Synocore Logo"
           className="w-32 h-32"
           initial={{ opacity: 0, scale: 0.8 }}

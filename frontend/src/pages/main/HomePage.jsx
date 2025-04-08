@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import NavBar from "../../components/gui/NavBar";
-import SideBar from "../../components/gui/SideBar";
 import { useUserStore } from '../../store/user';
-import LoginReminder from '../../components/modals/LoginReminder';
+
+const NavBar = lazy(() => import('../../components/gui/NavBar'));
+const SideBar = lazy(() => import('../../components/gui/SideBar'));
+const LoginReminder = lazy(() => import('../../components/modals/LoginReminder'));
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { 
     currentUser, 
-    // showLoginPopup, 
     authenticatedNavigation,
     initUserSession 
   } = useUserStore();
@@ -22,12 +22,12 @@ const HomePage = () => {
   const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase(); 
 
   useEffect(() => {
-    // Initialize user session when component mounts
     initUserSession();
   }, []);
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#121212] to-[#1e1e1e] text-white font-poppins overflow-hidden">
+      <Suspense fallback={<div>Loading...</div>}>
       {isReminderVisible && <LoginReminder onClose={() => setIsReminderVisible(false)} />}
 
       <div className="absolute inset-0 pointer-events-none opacity-1.5">
@@ -38,6 +38,7 @@ const HomePage = () => {
       
       <NavBar />
       <SideBar />
+      </Suspense>
 
       <motion.div className="flex flex-col items-end justify-center text-right h-screen px-4 p-15 mr-15 pb-25 relative z-10" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: 'easeOut' }}>
         <motion.button 
@@ -49,8 +50,8 @@ const HomePage = () => {
           {currentUser ? 'Try SynoCore' : 'Login to Access'}
         </motion.button>
 
-        <h2 className="text-[23px] font-outfit font-extrabold tracking-tight text-gray-400">DELIVERING <span className="font-extrabold text-white">CONFIDENCE</span></h2>
-        <motion.h1 className="text-4xl font-outfit font-extrabold mt-2 bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1 }}>
+        <h2 className="text-[23px] font-outfit tracking-tight text-gray-400">DELIVERING <span className="font-extrabold text-white">CONFIDENCE</span></h2>
+        <motion.h1 className="text-4xl font-outfit font-extrabold mt-2 bg-clip-text bg-gradient-to-r from-white to-gray-500" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1 }}>
           Through Verified Data Integrity.
         </motion.h1>
         <p className="text-gray-400 mt-3 max-w-xl font-prompt">Transforming data security into a seamless, trusted experience.</p>

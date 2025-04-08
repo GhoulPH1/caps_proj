@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import logo from "../../assets/synocore-logo.png";
 
 const NavBar = () => {
   const navigate = useNavigate();
@@ -8,7 +9,7 @@ const NavBar = () => {
     <nav className="flex justify-between items-center text-white px-10 py-4 absolute top-0 left-0 right-0 z-40 font-poppins">
       {/* Logo */}
       <div className="m-5 flex items-center space-x-2 cursor-pointer" onClick={() => navigate('/')}>
-        <img src="/src/assets/synocore-logo.png" alt="SynoCore Logo" className="h-9 w-auto" />
+        <img src={logo} alt="SynoCore Logo" className="h-9 w-auto" fetchPriority="high" />
         <span className="text-sm font-semibold">SynoCore</span>
       </div>
 

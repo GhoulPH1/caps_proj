@@ -1,16 +1,19 @@
-/* Importing fonts using @fontsource and applying font-display: swap */
-@import '@fontsource/poppins';  /* Poppins Regular (400) */
-@import '@fontsource/poppins/700.css';  /* Poppins Bold (700) */
-@import '@fontsource/outfit';   /* Outfit Regular (400) */
-@import '@fontsource/prompt';   /* Prompt Regular (400) */
+/* TailwindCSS Base Styles */
 @import "tailwindcss";
 
-/* Import component styles */
+/* Fonts: Importing via @fontsource with specific weights */
+@import '@fontsource/poppins/400.css';
+@import '@fontsource/poppins/700.css';
+@import '@fontsource/outfit/400.css';
+@import '@fontsource/prompt/400.css';
+
+/* Component-Level Styles */
 @import './styles/button.css';
 @import './styles/icon.css';
 @import './styles/navigation.css';
 @import './styles/animation.css';
 
+/* CSS Custom Properties (for font themes) */
 @theme {
   --font-outfit: "Outfit", sans-serif;
   --font-poppins: "Poppins", sans-serif;
@@ -20,18 +23,5 @@
 /* Global Font Defaults */
 body {
   font-family: var(--font-poppins);
-  font-display: swap;  /* Ensures fallback fonts are swapped with the actual font once loaded */
   text-rendering: optimizeLegibility;
-}
-
-/* Example specific font-face override for fine-tuning if needed */
-@font-face {
-  font-family: 'Poppins';
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Poppins';
-  font-weight: 700;
-  font-display: swap;
 }

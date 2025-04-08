@@ -1,53 +1,75 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useUserStore } from '../../store/user.js';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUserStore } from '../../store/user.js';
+import PinValidation from '../../components/PinValidation';
+import SecurityQuestion from '../../components/SecurityQuestion';
+import usePinValidation from '../../components/hooks/usePinValidation.js';
+import PinValidationService from '../../components/service/PinValidationService.js';
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const { 
     loginUser, 
-    isLoading, 
-    error, 
-    pinAttemptsLeft,
-    pinCooldownTime,
-    showSecurityQuestion,
-    securityPhrase,
-    userId,
-    verifySecurityAnswer
+    isLoading: storeLoading, 
+    error: storeError
   } = useUserStore();
   
   // State management
   const [credentials, setCredentials] = useState({ email: '', password: '', showPassword: false });
-  const [pin, setPin] = useState(['', '', '', '']);
   const [securityAnswer, setSecurityAnswer] = useState('');
+  const [securityPhrase, setSecurityPhrase] = useState('');
   const [step, setStep] = useState(1);
   const [tempUserData, setTempUserData] = useState(null);
   const [animations, setAnimations] = useState({
     credentials: '',
-    pin: '',
     security: ''
   });
   
-  // PIN input refs for focus management
-  const pinInputRefs = useRef(Array(4).fill().map(() => React.createRef()));
+  // Use PIN validation hook
+  const {
+    isLoading: pinLoading,
+    error: pinError,
+    pinAttemptsLeft,
+    pinCooldownTime,
+    isLockedOut,
+    requiresSecurityQuestion,
+    validatePin,
+    resetPinValidation
+  } = usePinValidation({
+    validatePinFn: PinValidationService.validatePin,
+    maxAttempts: 3,
+    cooldownSeconds: 60,
+    userId: tempUserData?._id
+  });
+  
+  // Derived loading and error states
+  const isLoading = storeLoading || pinLoading;
+  const error = storeError || pinError;
+
+  // Fetch security phrase when required
+  useEffect(() => {
+    const fetchSecurityPhrase = async () => {
+      if (requiresSecurityQuestion && tempUserData?._id) {
+        try {
+          const result = await PinValidationService.getSecurityQuestion(tempUserData._id);
+          if (result.securityPhrase) {
+            setSecurityPhrase(result.securityPhrase);
+          }
+        } catch (error) {
+          console.error("Failed to fetch security question:", error);
+        }
+      }
+    };
+    
+    if (requiresSecurityQuestion) {
+      fetchSecurityPhrase();
+    }
+  }, [requiresSecurityQuestion, tempUserData]);
 
   // Handle form field changes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setCredentials(prev => ({ ...prev, [name]: value }));
-  };
-
-  // Handle PIN input changes
-  const handlePinChange = (index, value) => {
-    const sanitizedValue = value.replace(/\D/g, '').slice(0, 1);
-    const newPin = [...pin];
-    newPin[index] = sanitizedValue;
-    setPin(newPin);
-    
-    // Auto-focus next input
-    if (sanitizedValue && index < 3) {
-      pinInputRefs.current[index + 1]?.current?.focus();
-    }
   };
 
   // Credentials submission handler
@@ -69,11 +91,27 @@ const LoginPage = () => {
           });
         }
         
+        // Check if the user is already locked out
+        if (result?.userId) {
+          try {
+            const lockoutStatus = await PinValidationService.checkPinLockoutStatus(result.userId);
+            if (lockoutStatus.isLocked) {
+              if (lockoutStatus.requiresSecurityQuestion) {
+                // Go directly to security question
+                setStep(3);
+                return;
+              } else if (lockoutStatus.cooldownTime) {
+                // Stay on PIN entry with cooldown
+              }
+            }
+          } catch (error) {
+            console.error("Failed to check PIN status:", error);
+          }
+        }
+        
         setAnimations(prev => ({ ...prev, credentials: 'slide-right-exit' }));
         setTimeout(() => {
           setStep(2);
-          setPin(['', '', '', '']);
-          setTimeout(() => pinInputRefs.current[0]?.current?.focus(), 100);
         }, 500);
       } else if (result?.success) {
         // If login completed (unlikely without PIN)
@@ -85,35 +123,35 @@ const LoginPage = () => {
   };
   
   // PIN submission handler
-  const handlePinSubmit = async (e) => {
-    e.preventDefault();
-    const pinValue = pin.join('');
-    const userIdToUse = userId || tempUserData?._id;
-    
-    setAnimations(prev => ({ ...prev, pin: 'slide-left-enter' }));
-    
+  const handlePinSubmit = async (pinValue) => {
     try {
+      // Use our custom PIN validation hook
+      const result = await validatePin(pinValue);
+      
+      if (result?.requireSecurityQuestion || requiresSecurityQuestion) {
+        setStep(3);
+        return { success: false, requireSecurityQuestion: true };
+      }
+      
       // Complete the login with the PIN
       const loginResult = await loginUser({
         email: credentials.email,
         password: credentials.password,
         pin: pinValue,
-        userId: userIdToUse
+        userId: tempUserData?._id
       });
-      
-      if (loginResult?.requireSecurityQuestion) {
-        setAnimations(prev => ({ ...prev, pin: 'slide-left-exit' }));
-        setTimeout(() => setStep(3), 500);
-        return;
-      }
-      
-      setAnimations(prev => ({ ...prev, pin: 'slide-left-exit' }));
       
       if (loginResult?.success) {
         setTimeout(() => navigate('/'), 500);
       }
+      
+      return { success: true };
     } catch (error) {
-      setAnimations(prev => ({ ...prev, pin: '' }));
+      // If PIN validation requires security question now
+      if (requiresSecurityQuestion) {
+        setStep(3);
+      }
+      throw error;
     }
   };
 
@@ -124,20 +162,55 @@ const LoginPage = () => {
     setAnimations(prev => ({ ...prev, security: 'slide-left-enter' }));
     
     try {
-      const result = await verifySecurityAnswer(securityAnswer);
+      const result = await PinValidationService.verifySecurityQuestion(
+        tempUserData?._id,
+        securityAnswer
+      );
       
       if (result?.success) {
-        // Complete the login process after security verification
-        await useUserStore.getState().completeLogin({
-          email: credentials.email,
-          password: credentials.password
-        });
+        // If user was locked out, show PIN reset screen
+        if (isLockedOut || result.canResetPin) {
+          setStep(4); // PIN reset step
+        } else if (result.canProceed) {
+          // Complete the login process after security verification
+          await loginUser({
+            email: credentials.email,
+            password: credentials.password,
+            securityVerified: true
+          });
+          
+          setAnimations(prev => ({ ...prev, security: 'slide-left-exit' }));
+          setTimeout(() => navigate('/'), 500);
+        }
         
-        setAnimations(prev => ({ ...prev, security: 'slide-left-exit' }));
-        setTimeout(() => navigate('/'), 500);
+        // Reset PIN validation state
+        resetPinValidation();
       }
     } catch (error) {
       setAnimations(prev => ({ ...prev, security: '' }));
+    }
+  };
+
+  // PIN Reset handler
+  const handlePinReset = async (newPin) => {
+    try {
+      const result = await PinValidationService.resetPin(
+        tempUserData?._id,
+        newPin,
+        securityAnswer
+      );
+      
+      if (result.success) {
+        // Reset validation state
+        resetPinValidation();
+        
+        // Go back to PIN entry
+        setStep(2);
+      }
+      
+      return result;
+    } catch (error) {
+      throw error;
     }
   };
   
@@ -205,93 +278,36 @@ const LoginPage = () => {
     ),
     
     2: () => (
-      <div className="flex flex-col items-center justify-center space-y-4 w-full">
-        <div className="text-center space-y-2">
-          <h2 className="text-lg text-gray-300">PLEASE</h2>
-          <h1 className="text-4xl font-bold">ENTER <span className="font-extrabold">YOUR AUTHENTICATION PIN</span></h1>
-          <p className="text-lg text-gray-300">Provide a 4-numerical character pin</p>
-          
-          {pinAttemptsLeft < 3 && pinCooldownTime === null && (
-            <p className="text-yellow-400 mt-2">
-              {pinAttemptsLeft} attempts remaining
-            </p>
-          )}
-          
-          {pinCooldownTime !== null && (
-            <p className="text-red-400 mt-2">
-              Too many incorrect attempts. Try again in {pinCooldownTime} seconds.
-            </p>
-          )}
-        </div>
-        
-        <form onSubmit={handlePinSubmit} className="w-full space-y-8">
-          <div className="flex justify-center space-x-4 mt-6">
-            {pin.map((digit, index) => (
-              <input 
-                key={index} 
-                ref={pinInputRefs.current[index]} 
-                type="password" 
-                maxLength={1} 
-                value={digit}
-                onChange={(e) => handlePinChange(index, e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Backspace' && !pin[index] && index > 0) {
-                    pinInputRefs.current[index - 1]?.current?.focus();
-                  }
-                }}
-                className="w-16 h-16 bg-gray-700 bg-opacity-50 border border-gray-600 text-center text-2xl rounded focus:outline-none focus:ring-1 focus:ring-gray-500" 
-                inputMode="numeric"
-                pattern="\d*"
-                disabled={pinCooldownTime !== null}
-              />
-            ))}
-          </div>
-          
-          <div className="flex justify-end mt-6">
-            <button 
-              type="submit" 
-              disabled={isLoading || pin.includes('') || pinCooldownTime !== null} 
-              className={`btn btn-transparent px-12 ${animations.pin}`}
-            >
-              {isLoading ? 'VERIFYING...' : 'Proceed'}
-            </button>
-          </div>
-        </form>
-      </div>
+      <PinValidation 
+        onPinSubmit={handlePinSubmit}
+        isLoading={isLoading}
+        error={error}
+        pinAttemptsLeft={pinAttemptsLeft}
+        pinCooldownTime={pinCooldownTime}
+        disabled={isLockedOut}
+      />
     ),
     
     3: () => (
-      <div className="flex flex-col items-center justify-center space-y-4 w-full">
-        <div className="text-center space-y-2">
-          <h2 className="text-lg text-gray-300">SECURITY VERIFICATION</h2>
-          <h1 className="text-4xl font-bold">ANSWER <span className="font-extrabold">YOUR SECURITY QUESTION</span></h1>
-          <p className="text-lg text-gray-300">{securityPhrase}</p>
-        </div>
-        
-        <form onSubmit={handleSecuritySubmit} className="w-full space-y-8 max-w-md mx-auto">
-          <div className="space-y-1">
-            <label className="block uppercase text-sm font-medium text-gray-400">YOUR ANSWER</label>
-            <input 
-              type="text" 
-              value={securityAnswer} 
-              onChange={(e) => setSecurityAnswer(e.target.value)}
-              className="w-full bg-gray-700 bg-opacity-50 text-white p-3 rounded border border-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-500"
-              required 
-              autoComplete="off"
-            />
-          </div>
-          
-          <div className="flex justify-end mt-6">
-            <button 
-              type="submit" 
-              disabled={isLoading || !securityAnswer.trim()} 
-              className={`btn btn-transparent px-12 ${animations.security}`}
-            >
-              {isLoading ? 'VERIFYING...' : 'Submit'}
-            </button>
-          </div>
-        </form>
-      </div>
+      <SecurityQuestion
+        securityPhrase={securityPhrase}
+        securityAnswer={securityAnswer}
+        setSecurityAnswer={setSecurityAnswer}
+        onSubmit={handleSecuritySubmit}
+        isLoading={isLoading}
+        error={error}
+        animation={animations.security}
+      />
+    ),
+    
+    4: () => (
+      <PinValidation 
+        onPinSubmit={handlePinReset}
+        isLoading={isLoading}
+        error={error}
+        heading="SET A NEW PIN"
+        subheading="Please create a new 4-digit PIN"
+      />
     )
   };
 
@@ -331,8 +347,13 @@ const LoginPage = () => {
         </div>
         {step > 1 && (
           <button 
-            onClick={() => setStep(step - 1)} 
+            onClick={() => {
+              // Don't go back if in lockout state
+              if (step === 3 && isLockedOut) return;
+              setStep(Math.max(1, step - 1));
+            }} 
             className="nav-link uppercase text-sm"
+            disabled={step === 3 && isLockedOut}
           >
             BACK
           </button>
@@ -351,26 +372,18 @@ const LoginPage = () => {
             <div className="w-1/3 px-6 flex items-center justify-center opacity-30 blur-sm">
               <div className="space-y-6">
                 <h2 className="text-4xl font-bold">SynoCore</h2>
-                <p className="text-gray-400">Please sign in with your existing account</p>
-                <div className="space-y-4">
-                  <div className="h-12 bg-gray-800 rounded"></div>
-                  <div className="h-12 bg-gray-800 rounded"></div>
-                  <button className="w-full h-12 bg-gray-800 rounded"></button>
-                </div>
+                <p className="text-lg">Security verification required</p>
               </div>
             </div>
             
-            {/* Right section (PIN entry or Security Question) */}
-            <div className="w-2/3 px-6 flex items-center justify-center">
-              {LoginSteps[step]()}
+            {/* Right section (active authentication step) */}
+            <div className="w-2/3 px-12 flex items-center">
+              <div className="w-full max-w-md mx-auto">
+                {LoginSteps[step]()}
+              </div>
             </div>
           </div>
         )}
-      </div>
-
-      {/* Logo */}
-      <div className="absolute bottom-6 right-6 cursor-pointer" onClick={() => navigate('/')}>
-        <img src="/src/assets/synocore-logo.png" alt="SynoCore Logo" className="h-12 w-auto" />
       </div>
     </div>
   );
